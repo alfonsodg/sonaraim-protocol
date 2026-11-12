@@ -14,6 +14,7 @@
 pub mod card;
 pub mod crypto;
 pub mod envelope;
+pub mod keyring;
 pub mod mls_group;
 pub mod psi;
 pub mod replay;
@@ -24,4 +25,5 @@ pub use card::{
     SonaraimCard,
 };
 pub use envelope::{validate_envelope, EnvelopeValidationError, SealedEnvelope};
+pub use keyring::{KeyEntry, KeyRing, KeyRingError};
 pub use replay::{ReplayError, ReplayWindow};
