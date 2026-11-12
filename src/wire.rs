@@ -4,6 +4,7 @@
 //! without panicking on truncated or malformed network input.
 
 use crate::card::{CardComponent, ComponentType, MerchantSignature, SonaraimCard};
+use crate::crypto::{canonical_card_bytes, derive_public_key, sign_card_jcs, to_hex};
 use crate::envelope::SealedEnvelope;
 use std::error::Error;
 use std::fmt;
@@ -173,4 +174,49 @@ pub fn decode_card(raw: &[u8]) -> Result<SonaraimCard, WireError> {
             signature_hex,
         },
     })
+}
+
+/// Exports a deterministic JSON test-vector bundle containing a canonical JCS payload,
+/// public key hex, signature hex, and binary `SNR1` wire frame hex for cross-runtime verification.
+pub fn export_canonical_test_vector() -> String {
+    let secret = [0x07u8; 32];
+    let pub_key_hex = to_hex(&derive_public_key(&secret));
+    let mut card = SonaraimCard {
+        card_id: "card-vector-m7-001".to_string(),
+        title: "Milestone 7 Interop Vector".to_string(),
+        summary: "Deterministic cross-runtime test vector for Sonaraim JCS and wire framing."
+            .to_string(),
+        components: vec![
+            CardComponent {
+                component_type: ComponentType::TextBlock,
+                label: "Canonical payload verification".to_string(),
+                value: None,
+                action_uri: None,
+            },
+            CardComponent {
+                component_type: ComponentType::ActionButton,
+                label: "Verify Order".to_string(),
+                value: None,
+                action_uri: Some("sonaraim://verify/m7-001".to_string()),
+            },
+        ],
+        merchant_signature: MerchantSignature {
+            did: "did:sonaraim:merchant-vector-01".to_string(),
+            algorithm: "Ed25519".to_string(),
+            signature_hex: String::new(),
+        },
+    };
+    let _ = sign_card_jcs(&mut card, &secret);
+    let canonical_raw = String::from_utf8(canonical_card_bytes(&card)).unwrap_or_default();
+    let escaped_canonical = canonical_raw.replace('\\', "\\\\").replace('"', "\\\"");
+    let frame_hex = encode_card(&card).map(|b| to_hex(&b)).unwrap_or_default();
+
+    format!(
+        "{{\"card_id\":\"{}\",\"canonical_jcs\":\"{}\",\"public_key_hex\":\"{}\",\"signature_hex\":\"{}\",\"wire_frame_hex\":\"{}\"}}",
+        card.card_id,
+        escaped_canonical,
+        pub_key_hex,
+        card.merchant_signature.signature_hex,
+        frame_hex
+    )
 }
