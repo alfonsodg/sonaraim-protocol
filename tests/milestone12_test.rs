@@ -6,6 +6,7 @@
 
 use sonaraim_protocol::card::{CardComponent, ComponentType, MerchantSignature, SonaraimCard};
 use sonaraim_protocol::keyring::{KeyEntry, KeyRing, KeyRingError};
+use sonaraim_protocol::mls_group::{MlsError, MlsGroupState};
 
 fn sample_card() -> SonaraimCard {
     SonaraimCard {
@@ -129,5 +130,65 @@ fn keyring_rejects_unknown_expired_not_yet_valid_and_revoked_keys() {
     assert_eq!(
         ring.sign_card_with_active_key(&mut card, 15_000),
         Err(KeyRingError::KeyRevoked("kid-temp".to_string()))
+    );
+}
+
+#[test]
+fn mls_force_recovery_ratchet_purges_compromised_epochs_and_tracks_transcript() {
+    let mut group_a = MlsGroupState::new("grp-enterprise-01", "did:sonaraim:alice");
+    let mut group_b = MlsGroupState::new("grp-enterprise-01", "did:sonaraim:alice");
+    assert_eq!(
+        group_a.transcript_digest_hex(),
+        group_b.transcript_digest_hex()
+    );
+    let digest_epoch_0 = group_a.transcript_digest_hex();
+
+    assert_eq!(group_a.add_member("did:sonaraim:bob"), Ok(1));
+    assert_eq!(group_b.add_member("did:sonaraim:bob"), Ok(1));
+    assert_ne!(group_a.transcript_digest_hex(), digest_epoch_0);
+    assert_eq!(
+        group_a.transcript_digest_hex(),
+        group_b.transcript_digest_hex()
+    );
+
+    let msg_epoch_1 = group_a
+        .encrypt_application_msg(b"confidential-before-compromise")
+        .unwrap_or_default();
+
+    // Non-purging recovery ratchet advances to epoch 2 while keeping epoch 1 accessible
+    let entropy_1 = b"fresh-csprng-entropy-block-01";
+    assert_eq!(group_a.force_recovery_ratchet(entropy_1, false), Ok(2));
+    assert_eq!(group_b.force_recovery_ratchet(entropy_1, false), Ok(2));
+    assert_eq!(
+        group_a.transcript_digest_hex(),
+        group_b.transcript_digest_hex()
+    );
+    assert!(group_a
+        .decrypt_application_msg(&msg_epoch_1, 1, "did:sonaraim:bob")
+        .is_ok());
+
+    // Emergency purging recovery ratchet advances to epoch 3 and purges epochs 0..=2
+    let entropy_2 = b"emergency-post-compromise-seed-02";
+    assert_eq!(group_a.force_recovery_ratchet(entropy_2, true), Ok(3));
+    assert_eq!(group_b.force_recovery_ratchet(entropy_2, true), Ok(3));
+    assert_eq!(
+        group_a.transcript_digest_hex(),
+        group_b.transcript_digest_hex()
+    );
+    assert_eq!(group_a.current_epoch_key(), group_b.current_epoch_key());
+
+    // Purged epoch 1 must now return UnknownEpoch(1)
+    assert_eq!(
+        group_a.decrypt_application_msg(&msg_epoch_1, 1, "did:sonaraim:bob"),
+        Err(MlsError::UnknownEpoch(1))
+    );
+
+    // Current epoch 3 encrypts and decrypts cleanly
+    let msg_epoch_3 = group_a
+        .encrypt_application_msg(b"post-recovery-payload")
+        .unwrap_or_default();
+    assert_eq!(
+        group_b.decrypt_application_msg(&msg_epoch_3, 3, "did:sonaraim:bob"),
+        Ok(b"post-recovery-payload".to_vec())
     );
 }
