@@ -1,0 +1,9 @@
+[package]
+name = "sonaraim-protocol"
+version = "0.1.0"
+edition = "2021"
+description = "Core wire contracts, Sealed Sender envelope, and Sonaraim Card validator for the Sonaraim ecosystem"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/alfonsodg/sonaraim-protocol"
+
+[dependencies]

@@ -1,0 +1,79 @@
+syntax = "proto3";
+
+package sonaraim.protocol.v1;
+
+option java_multiple_files = true;
+option java_package = "com.sonaraim.protocol.v1";
+
+// Blinded routing envelope that conceals sender identity from relay servers.
+message SealedEnvelope {
+  // Anonymous rotating mailbox identifier for the recipient.
+  string mailbox_id = 1;
+  // 32-byte X25519 ephemeral public key for outer HPKE unsealing.
+  bytes ephemeral_pub_key = 2;
+  // Encrypted RFC 9420 Messaging Layer Security (MLS) frame.
+  bytes mls_ciphertext = 3;
+  // Time-to-live in seconds at the relay node (60..=604800).
+  uint32 ttl_seconds = 4;
+}
+
+// Pre-published MLS KeyPackage used for asynchronous group/session establishment.
+message MlsKeyPackage {
+  // Unique identifier of the key package bundle.
+  string key_package_id = 1;
+  // Ciphersuite identifier (e.g., 0x0001 for MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519).
+  uint32 ciphersuite_id = 2;
+  // Serialized RFC 9420 KeyPackage bytes.
+  bytes key_package_bytes = 3;
+  // Credential proof linking the MLS leaf key to a Decentralized Identifier.
+  DidProof credential_proof = 4;
+  // Unix timestamp (seconds) when this key package expires.
+  uint64 expires_at_unix = 5;
+}
+
+// Cryptographic proof binding a Decentralized Identifier (DID) to an Ed25519 key.
+message DidProof {
+  // Decentralized Identifier (must use did:web: or did:sonaraim: method).
+  string did = 1;
+  // Verification method fragment (e.g., "#key-1").
+  string key_id = 2;
+  // Signature algorithm (must be "Ed25519").
+  string algorithm = 3;
+  // 64-byte Ed25519 signature hex or raw bytes over the canonical payload.
+  string signature_hex = 4;
+}
+
+// Permitted declarative component types inside a SonaraimCard.
+enum CardComponentType {
+  CARD_COMPONENT_TYPE_UNSPECIFIED = 0;
+  CARD_COMPONENT_TYPE_TEXT_BLOCK = 1;
+  CARD_COMPONENT_TYPE_MEDIA_IMAGE = 2;
+  CARD_COMPONENT_TYPE_KEY_VALUE_ROW = 3;
+  CARD_COMPONENT_TYPE_ACTION_BUTTON = 4;
+}
+
+// Single declarative UI block inside a SonaraimCard.
+message CardComponent {
+  // Declarative type of the UI block (raw HTML/scripts forbidden).
+  CardComponentType component_type = 1;
+  // Primary label or text content.
+  string label = 2;
+  // Optional secondary value (for key-value rows or subtitles).
+  string value = 3;
+  // Optional target URI (must use https:// or sonaraim://).
+  string action_uri = 4;
+}
+
+// Rich interactive B2B message card rendered natively by Sonaraim clients.
+message SonaraimCard {
+  // Unique deterministic card identifier.
+  string card_id = 1;
+  // Human-readable card title.
+  string title = 2;
+  // Plain-text fallback summary for notification previews.
+  string summary = 3;
+  // Ordered list of 1..=16 declarative components.
+  repeated CardComponent components = 4;
+  // Mandatory merchant DID signature authenticating the card contents.
+  DidProof merchant_signature = 5;
+}
