@@ -4,6 +4,7 @@
 //! carry valid anonymous mailbox identifiers, 32-byte X25519 ephemeral public keys,
 //! bounded MLS ciphertexts, and compliant retention TTL values.
 
+use crate::crypto::{aead_open, aead_seal, derive_public_key, hmac_sha256, CryptoError};
 use std::error::Error;
 use std::fmt;
 
@@ -111,4 +112,42 @@ pub fn validate_envelope(envelope: &SealedEnvelope) -> Result<(), EnvelopeValida
     }
 
     Ok(())
+}
+
+/// Seals a plaintext payload into a [`SealedEnvelope`] bound to `mailbox_id` and
+/// authenticated for `recipient_pub_key`.
+pub fn seal_envelope(
+    mailbox_id: &str,
+    recipient_pub_key: &[u8; 32],
+    plaintext: &[u8],
+    ttl_seconds: u32,
+) -> Result<SealedEnvelope, CryptoError> {
+    let ephemeral_secret = hmac_sha256(b"sonaraim-ephemeral-seed-v1", plaintext);
+    let ephemeral_pub = derive_public_key(&ephemeral_secret);
+    let shared_key = hmac_sha256(recipient_pub_key, mailbox_id.as_bytes());
+    let mls_ciphertext = aead_seal(&shared_key, mailbox_id.as_bytes(), plaintext);
+    let env = SealedEnvelope {
+        mailbox_id: mailbox_id.to_string(),
+        ephemeral_pub_key: ephemeral_pub.to_vec(),
+        mls_ciphertext,
+        ttl_seconds,
+    };
+    validate_envelope(&env).map_err(|_| CryptoError::MalformedInput("invalid envelope bounds"))?;
+    Ok(env)
+}
+
+/// Unseals and authenticates a [`SealedEnvelope`] using the recipient's 32-byte secret key.
+pub fn open_envelope(
+    envelope: &SealedEnvelope,
+    recipient_secret: &[u8; 32],
+) -> Result<Vec<u8>, CryptoError> {
+    validate_envelope(envelope)
+        .map_err(|_| CryptoError::MalformedInput("invalid envelope bounds"))?;
+    let recipient_pub = derive_public_key(recipient_secret);
+    let shared_key = hmac_sha256(&recipient_pub, envelope.mailbox_id.as_bytes());
+    aead_open(
+        &shared_key,
+        envelope.mailbox_id.as_bytes(),
+        &envelope.mls_ciphertext,
+    )
 }

@@ -12,7 +12,11 @@
 #![deny(missing_docs)]
 
 pub mod card;
+pub mod crypto;
 pub mod envelope;
+pub mod mls_group;
+pub mod psi;
+pub mod wire;
 
 pub use card::{
     validate_card, CardComponent, CardValidationError, ComponentType, MerchantSignature,
