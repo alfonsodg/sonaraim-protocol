@@ -2,11 +2,17 @@
 
 > Zero-metadata Sealed Sender wire contracts, MLS key package models, and declarative Sonaraim Card validators.
 
+[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Crate: Rust 2021](https://img.shields.io/badge/Crate-Rust%202021-DEA584.svg?logo=rust&logoColor=white)](Cargo.toml)
+[![Crypto: OpenMLS RFC 9420](https://img.shields.io/badge/Crypto-OpenMLS%20RFC%209420-orange.svg)](src/mls_group.rs)
+[![Schema: JSON Schema 2020-12](https://img.shields.io/badge/Schema-JSON%20Schema%202020--12-informational.svg)](configs/schemas/sonaraim-card.schema.json)
+[![Security: Zero-Metadata Sealed Sender](https://img.shields.io/badge/Security-Zero--Metadata%20Sealed%20Sender-green.svg)](SECURITY.md)
+
 `sonaraim-protocol` defines the canonical wire format, cryptographic envelope invariants, and verifiable rich-card schema for the Sonaraim privacy-preserving messaging ecosystem.
 
 ---
 
-## Key Capabilities
+## ⚡ Key Capabilities
 
 - **Sealed Sender Envelopes (`src/envelope.rs`)**: Blinded routing contracts using anonymous mailbox identifiers, 32-byte X25519 ephemeral public keys, and RFC 9420 MLS ciphertexts.
 - **Declarative Sonaraim Cards (`src/card.rs`)**: Safe, interactive B2B message cards that disallow raw HTML, scripts, and unsafe URI schemes at the protocol boundary.
@@ -19,7 +25,58 @@
 
 ---
 
-## Repository Layout
+## 🔐 Cryptographic Framing & Wire Pipeline
+
+The following ASCII diagram illustrates the wire serialization, sealing, and validation flow across the protocol boundaries:
+
+```text
++-----------------------------------------------------------------------------------+
+|                        SONARAIM PROTOCOL WIRE PIPELINE                            |
++-----------------------------------------------------------------------------------+
+|                                                                                   |
+|  [B2B Application / Client]                     [Declarative Interactive Card]    |
+|  - Plaintext Message / Notification             - Strict JSON Schema (2020-12)    |
+|  - did:web / did:sonaraim Identity              - Zero-HTML / Zero-Script safety  |
+|            |                                              |                       |
+|            v                                              v                       |
+|  +--------------------+                         +-------------------+             |
+|  | OpenMLS RFC 9420   |                         |  Canonical JCS    |             |
+|  | Group Ratchet      |                         |  (RFC 8785 Hash)  |             |
+|  +---------+----------+                         +---------+---------+             |
+|            |                                              |                       |
+|            | Ratcheted MLS Ciphertext                     | Ed25519 Signature     |
+|            v                                              v                       |
+|  +------------------------------------------------------------------+             |
+|  |              SEALED SENDER ENVELOPE (src/envelope.rs)            |             |
+|  |  - Anonymous Mailbox ID (32-byte Blake3 / SHA-256 routing token) |             |
+|  |  - Ephemeral X25519 Public Key (forward secrecy per envelope)    |             |
+|  |  - Encrypted Payload Envelope (MLS ciphertext + signed Card)     |             |
+|  |  - Anti-Replay Timestamp & Epoch nonce                           |             |
+|  +---------------------------------+--------------------------------+             |
+|                                    |                                              |
+|                                    v                                              |
+|  +------------------------------------------------------------------+             |
+|  |              LENGTH-PREFIXED WIRE FRAMING (src/wire.rs)          |             |
+|  |  [4-byte BE Length Prefix] || [Protobuf / Binary Wire Envelope]  |             |
+|  +---------------------------------+--------------------------------+             |
+|                                    |                                              |
+|            +-----------------------+-----------------------+                      |
+|            | Dispatched via QUIC / HTTP                    |                      |
+|            v                                               v                      |
+|  +-------------------+                           +--------------------+           |
+|  |   sonaraim-node   |                           |    Recipient App   |           |
+|  |  (Relay Routing)  |                           |  (OpenMLS Unseal)  |           |
+|  +-------------------+                           +--------------------+           |
+|                                                                                   |
++-----------------------------------------------------------------------------------+
+```
+
+> [!NOTE]
+> For comprehensive sequence diagrams of group ratchet epoch transitions and Sealed Sender validation state machines, see [docs/DIAGRAMS.md](docs/DIAGRAMS.md).
+
+---
+
+## 🧩 Repository Layout
 
 ```text
 sonaraim-protocol/
@@ -54,7 +111,7 @@ sonaraim-protocol/
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Build & Test
 
@@ -74,7 +131,7 @@ npx --yes markdownlint-cli2 "*.md" "docs/*.md"
 
 ---
 
-## Collaboration & Governance
+## 🌐 Collaboration & Governance
 
 - **[Contributing Guide](CONTRIBUTING.md)** — Branching model (`develop`), TDD mandate, and commit conventions.
 - **[Code of Conduct](CODE_OF_CONDUCT.md)** — Community standards and enforcement guidelines.
@@ -85,7 +142,7 @@ npx --yes markdownlint-cli2 "*.md" "docs/*.md"
 
 ---
 
-## License
+## 📜 License
 
 Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
 
