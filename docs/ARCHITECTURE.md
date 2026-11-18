@@ -4,7 +4,7 @@
 
 ## 1. Architectural Overview
 
-`sonaraim-protocol` provides the foundational wire contracts and cryptographic invariants for the Sonaraim privacy-preserving messaging ecosystem. It strictly separates untrusted relay transport (`SealedEnvelope`) from end-to-end encrypted application payloads (`SonaraimCard` and MLS application frames).
+`sonaraim-protocol` provides the foundational wire contracts and cryptographic invariants for the Sonaraim privacy-preserving messaging ecosystem. It strictly separates untrusted relay transport (`SealedEnvelope`) from end-to-end encrypted application payloads (`SonaraimCard` and group-ratchet application frames).
 
 ```text
 +-------------------------------------------------------------------+
@@ -12,7 +12,7 @@
 |  +--------------------+----------------------------------------+  |
 |  | mailbox_id (anon)  | ephemeral_pub_key (32B X25519)         |  |
 |  +--------------------+----------------------------------------+  |
-|  | ttl_seconds        | mls_ciphertext (RFC 9420 MLS Frame)    |  |
+|  | ttl_seconds        | mls_ciphertext (Group Ratchet Frame)   |  |
 |  +--------------------+----------------------------------------+  |
 |                                  |                                |
 |                                  v (Decrypted only by Recipient)  |
@@ -31,8 +31,8 @@
 Relay nodes route messages exclusively by `mailbox_id` without learning the sender's identity or correlating traffic:
 
 - **`mailbox_id`**: Rotating opaque token (8 to 128 ASCII alphanumeric/hyphen/underscore characters) derived for the recipient's delivery mailbox.
-- **`ephemeral_pub_key`**: Exactly 32 bytes representing a one-time X25519 public key used for HPKE/ECDH unsealing.
-- **`mls_ciphertext`**: Non-empty encrypted Messaging Layer Security (RFC 9420) payload capped at 256 KiB (`262144` bytes).
+- **`ephemeral_pub_key`**: Exactly 32 bytes representing a fresh random one-time X25519 public key; sealing runs ephemeral-static Diffie-Hellman against the recipient key with HKDF-SHA256 derivation (ECDH, not HPKE).
+- **`mls_ciphertext`**: Non-empty encrypted Sonaraim Group Ratchet payload (ChaCha20-Poly1305 AEAD, `nonce || ciphertext || tag`) capped at 256 KiB (`262144` bytes).
 - **`ttl_seconds`**: Ephemeral storage TTL between 60 seconds (1 minute) and 604800 seconds (7 days).
 
 ---
@@ -49,9 +49,11 @@ B2B merchants send rich interactive messages inside E2EE sessions using declarat
 
 ## 4. Canonical Hashing & Cryptography (`src/crypto.rs`)
 
-- **JCS Canonicalization (RFC 8785)**: JSON objects are serialized into deterministic UTF-8 byte streams with sorted keys and whitespace normalization before computing digests.
-- **AEAD Sealing**: Ephemeral session sealing uses ChaCha20-Poly1305 with 12-byte random nonces and 16-byte poly1305 authentication tags.
-- **Digital Signatures**: All cryptographic identity proofs use Ed25519 (Edwards-curve Digital Signature Algorithm).
+Audited crates only (`ed25519-dalek`, `x25519-dalek`, `chacha20poly1305`, `sha2`, `rand`/`OsRng`, `zeroize`); home-made hashes, MACs, and ciphers are forbidden:
+
+- **JCS Canonicalization (RFC 8785)**: JSON objects are serialized into deterministic UTF-8 byte streams with sorted keys and whitespace normalization; the signed preimage is versioned (`sonaraim-jcs-v1` + `0x1f` + `sonaraim-card-ed25519-v1` + `0x1f` + canonical JCS) and pinned in `tests/vectors/v1.json`.
+- **AEAD Sealing**: Envelope sealing uses ChaCha20-Poly1305 (IETF, RFC 8438/8439 layout `nonce || ciphertext || 16-byte tag`) with 12-byte fresh random nonces per seal.
+- **Digital Signatures**: All cryptographic identity proofs use real Ed25519 (`ed25519-dalek`, RFC 8032) verified against RFC test vectors; X25519 agreement (`x25519-dalek`, RFC 7748) derives AEAD keys via HKDF-SHA256.
 
 ---
 
@@ -72,14 +74,14 @@ The `Keyring` subsystem tracks active and historical cryptographic keys for veri
 
 ---
 
-## 6. MLS Group Ratcheting (`src/mls_group.rs`)
+## 6. Sonaraim Group Ratcheting (`src/mls_group.rs`)
 
-`MlsGroupSession` implements tree ratcheting semantics matching RFC 9420:
+`MlsGroupState` implements an MLS-inspired (not RFC 9420, not OpenMLS — explicitly deferred) symmetric group ratchet:
 
 - **Epoch Progression**: Adding or removing group members increments the group epoch and updates the epoch secret via HKDF-SHA256.
-- **Forward Secrecy**: Old epoch secrets are zeroized upon progression, preventing compromise of past messages if a current device key is extracted.
-- **Post-Compromise Security (PCS)**: Members periodically commit self-updates that refresh the tree ratchet and heal past compromises.
-- **Transcript Hashing**: Every epoch generates a deterministic transcript hash tying member actions and state transitions together.
+- **Forward Secrecy**: The superseded transient epoch key copy is zeroized on every rotation, and `force_recovery_ratchet(..., purge_prior_epochs = true)` zeroizes and drops all prior stored epoch keys so compromised history stays unrecoverable.
+- **Post-Compromise Security (PCS)**: Members trigger emergency `force_recovery_ratchet` updates with fresh entropy that refresh the ratchet and heal past compromises.
+- **Transcript Hashing**: Every epoch generates a deterministic SHA-256 transcript hash tying member actions and state transitions together.
 
 ---
 
@@ -87,9 +89,9 @@ The `Keyring` subsystem tracks active and historical cryptographic keys for veri
 
 Private contact discovery enables users to discover contacts already registered on Sonaraim without uploading address books:
 
-- **Blinded Tokens**: The client hashes phone numbers in E.164 format with a client blinding factor.
-- **Server Evaluation**: The server evaluates blinded tokens against its internal registered phone index using keyed HMAC or scalar multiplication.
-- **Zero Leakage**: Non-matching contacts are completely undetectable by the server.
+- **Blinded Tokens**: The client hashes phone numbers in E.164 format with a per-session client salt (`HMAC-SHA256` blinding, no server secret on the client).
+- **Server Evaluation**: The server returns keyed tokens for client blinds plus directory commitments salted with the client salt; matching is an honest DH-blinded intersection run entirely on the client (`match_psi_results` never receives `server_secret`).
+- **Zero Leakage**: Non-matching contacts are completely undetectable by the server; malicious-server security (verifiable OPRF) is deferred follow-up work, not claimed here.
 
 ---
 

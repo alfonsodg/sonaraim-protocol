@@ -4,7 +4,7 @@
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Crate: Rust 2021](https://img.shields.io/badge/Crate-Rust%202021-DEA584.svg?logo=rust&logoColor=white)](Cargo.toml)
-[![Crypto: OpenMLS RFC 9420](https://img.shields.io/badge/Crypto-OpenMLS%20RFC%209420-orange.svg)](src/mls_group.rs)
+[![Crypto: Ed25519 + X25519 + ChaCha20-Poly1305](https://img.shields.io/badge/Crypto-Ed25519%20X25519%20ChaCha20--Poly1305-orange.svg)](src/crypto.rs)
 [![Schema: JSON Schema 2020-12](https://img.shields.io/badge/Schema-JSON%20Schema%202020--12-informational.svg)](configs/schemas/sonaraim-card.schema.json)
 [![Security: Zero-Metadata Sealed Sender](https://img.shields.io/badge/Security-Zero--Metadata%20Sealed%20Sender-green.svg)](SECURITY.md)
 
@@ -14,14 +14,14 @@
 
 ## ⚡ Key Capabilities
 
-- **Sealed Sender Envelopes (`src/envelope.rs`)**: Blinded routing contracts using anonymous mailbox identifiers, 32-byte X25519 ephemeral public keys, and RFC 9420 MLS ciphertexts.
+- **Sealed Sender Envelopes (`src/envelope.rs`)**: Blinded routing contracts using anonymous mailbox identifiers, fresh ephemeral-static X25519 Diffie-Hellman, HKDF-SHA256 key derivation, and ChaCha20-Poly1305 sealed group-ratchet ciphertexts.
 - **Declarative Sonaraim Cards (`src/card.rs`)**: Safe, interactive B2B message cards that disallow raw HTML, scripts, and unsafe URI schemes at the protocol boundary.
-- **Canonical JCS & Ed25519 Signatures (`src/card.rs`, `src/crypto.rs`)**: Deterministic JSON Canonicalization Scheme (RFC 8785) hashing and Ed25519 signature validation bound to `did:web:` and `did:sonaraim:` identifiers.
+- **Declarative Sonaraim Cards (`src/card.rs`, `src/crypto.rs`)**: Safe, interactive B2B message cards that disallow raw HTML, scripts, and unsafe URI schemes at the protocol boundary; Ed25519 signatures over versioned JCS preimages (`sonaraim-jcs-v1`), cross-verified from Node.js WebCrypto (`tests/vectors/v1.json`).
 - **Identity Keyring & Revocation (`src/keyring.rs`)**: Key rotation tracking, expiration checks, and historical signature verification across key lifetimes.
-- **MLS Group Ratcheting (`src/mls_group.rs`)**: Group epoch progression, member addition/removal with forward secrecy, post-compromise security ratchets, and transcript hashing.
+- **Sonaraim Group Ratchet (`src/mls_group.rs`)**: MLS-inspired group epoch progression with HKDF-SHA256 rotation, forward secrecy via epoch-key zeroization, post-compromise recovery ratchets, and transcript hashing. OpenMLS is explicitly deferred — this module is not RFC 9420.
 - **Private Set Intersection (`src/psi.rs`)**: Blinded cryptographic token evaluation for private social graph discovery without leaking unhashed contact books.
 - **Anti-Replay Sliding Window (`src/replay.rs`)**: FIFO sliding window for duplicate envelope detection and stale epoch rejection.
-- **Wire Framing & Length Prefixing (`src/wire.rs`)**: Binary length-prefixed framing and stream serialization for high-throughput network transports.
+- **Wire Framing & Length Prefixing (`src/wire.rs`)**: Binary length-prefixed framing and stream serialization for high-throughput network transports; deterministic JCS test vectors for cross-runtime verification.
 
 ---
 
@@ -40,17 +40,18 @@ The following ASCII diagram illustrates the wire serialization, sealing, and val
 |            |                                              |                       |
 |            v                                              v                       |
 |  +--------------------+                         +-------------------+             |
-|  | OpenMLS RFC 9420   |                         |  Canonical JCS    |             |
-|  | Group Ratchet      |                         |  (RFC 8785 Hash)  |             |
+|  | Group Ratchet    |                         |  Canonical JCS    |             |
+|  | (MLS-inspired)   |                         |  (RFC 8785 Hash)  |             |
+|  |                  |                         |                   |             |
 |  +---------+----------+                         +---------+---------+             |
 |            |                                              |                       |
-|            | Ratcheted MLS Ciphertext                     | Ed25519 Signature     |
+|            | Ratcheted group ciphertext                   | Ed25519 Signature     |
 |            v                                              v                       |
 |  +------------------------------------------------------------------+             |
 |  |              SEALED SENDER ENVELOPE (src/envelope.rs)            |             |
-|  |  - Anonymous Mailbox ID (32-byte Blake3 / SHA-256 routing token) |             |
+|  |  - Anonymous Mailbox ID (opaque 8-128 char routing token)      |             |
 |  |  - Ephemeral X25519 Public Key (forward secrecy per envelope)    |             |
-|  |  - Encrypted Payload Envelope (MLS ciphertext + signed Card)     |             |
+|  |  - Encrypted Payload (group-ratchet ciphertext + signed Card)  |             |
 |  |  - Anti-Replay Timestamp & Epoch nonce                           |             |
 |  +---------------------------------+--------------------------------+             |
 |                                    |                                              |
@@ -65,7 +66,7 @@ The following ASCII diagram illustrates the wire serialization, sealing, and val
 |            v                                               v                      |
 |  +-------------------+                           +--------------------+           |
 |  |   sonaraim-node   |                           |    Recipient App   |           |
-|  |  (Relay Routing)  |                           |  (OpenMLS Unseal)  |           |
+|  |  (Relay Routing)  |                           |  (Recipient open) |           |
 |  +-------------------+                           +--------------------+           |
 |                                                                                   |
 +-----------------------------------------------------------------------------------+

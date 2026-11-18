@@ -41,15 +41,17 @@ The Sonaraim engineering team takes security vulnerabilities seriously. We ask t
 
 ### 3.1 End-to-End Encryption Boundaries
 
-- **Messaging Layer Security (MLS 1.0 / RFC 9420)**: Group ratcheting, forward secrecy, and post-compromise security. Relay nodes never have access to group ratchet trees or decryption keys.
-- **Sealed Sender Outer Envelope**: Outer routing metadata contains only an anonymous `mailbox_id` and ephemeral 32-byte X25519 public key. Relay nodes cannot identify the sender or correlate traffic without compromising recipient private keys.
-- **Authenticated Encryption (AEAD)**: All envelope payloads use ChaCha20-Poly1305 or AES-256-GCM AEAD ciphers with mandatory authentication tags.
+- **Sonaraim Group Ratchet (MLS-inspired, not OpenMLS/RFC 9420 — OpenMLS explicitly deferred)**: Symmetric group ratcheting with HKDF-SHA256 rotation, forward secrecy via epoch-key zeroization, and post-compromise recovery ratchets. Relay nodes never have access to group ratchet keys.
+- **Sealed Sender Outer Envelope**: Outer routing metadata contains only an anonymous `mailbox_id` and a fresh random ephemeral 32-byte X25519 public key per envelope (ephemeral-static ECDH with HKDF-SHA256, not HPKE). Relay nodes cannot identify the sender or correlate traffic without compromising recipient private keys.
+- **Authenticated Encryption (AEAD)**: All envelope payloads use ChaCha20-Poly1305 (IETF, `chacha20poly1305` crate, `nonce || ciphertext || 16-byte tag`) AEAD with mandatory authentication tags.
 
 ### 3.2 Key Transparency & Identity Attestation
 
-- **Merkle Tree Inclusion Proofs**: All public identity keys (`did:web` and `did:sonaraim`) are registered in an append-only Key Transparency Merkle log.
-- **Equivocation Detection**: Federated nodes gossip Signed Tree Heads (STH) over UDP/QUIC to cryptographically detect split-view or key-substitution attacks.
-- **Ed25519 Signatures**: Merchant identity and card action proofs must be signed with valid Ed25519 keys bound to verified DID documents.
+Roadmap (not yet implemented — do not build on these as present features):
+
+- **Key Transparency Merkle log**: Planned append-only registration of public identity keys (`did:web` and `did:sonaraim`) with Merkle inclusion proofs.
+- **Equivocation Detection**: Planned gossip of Signed Tree Heads (STH) to detect split-view or key-substitution attacks.
+- **Implemented today**: Real Ed25519 merchant signatures (`ed25519-dalek`, RFC 8032) bound to verified DID documents.
 
 ### 3.3 Zero-HTML & Declarative Card Safety
 
@@ -59,7 +61,7 @@ The Sonaraim engineering team takes security vulnerabilities seriously. We ask t
 
 ### 3.4 Contact Discovery (Private Set Intersection)
 
-- **Blinded Hashes**: Contact discovery uses blinded cryptographic token hashing (`psi.rs`). The server evaluates intersection sets without observing unhashed phone numbers, address books, or social graphs.
+- **Blinded Hashes**: Contact discovery uses an honest DH-blinded match (`psi.rs`): the client blinds with a per-session salt, the server returns keyed tokens plus directory commitments, and matching runs entirely on the client — `server_secret` never leaves the server. Verifiable OPRF security against a malicious server is deferred follow-up work.
 
 ---
 
