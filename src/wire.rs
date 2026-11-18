@@ -4,7 +4,7 @@
 //! without panicking on truncated or malformed network input.
 
 use crate::card::{CardComponent, ComponentType, MerchantSignature, SonaraimCard};
-use crate::crypto::{canonical_card_bytes, derive_public_key, sign_card_jcs, to_hex};
+use crate::crypto::{canonical_card_bytes, ed25519_public_key_bytes, sign_card_jcs, to_hex};
 use crate::envelope::SealedEnvelope;
 use std::error::Error;
 use std::fmt;
@@ -178,9 +178,18 @@ pub fn decode_card(raw: &[u8]) -> Result<SonaraimCard, WireError> {
 
 /// Exports a deterministic JSON test-vector bundle containing a canonical JCS payload,
 /// public key hex, signature hex, and binary `SNR1` wire frame hex for cross-runtime verification.
+///
+/// The canonical JCS payload and card signature are deterministic for the fixed
+/// vector seed; the wire frame is deterministic as well. The full versioned
+/// bundle (including AEAD/X25519 vectors) lives in `tests/vectors/v1.json` —
+/// run `cargo test export_versioned_vectors` to regenerate it after review.
+///
+/// ```bash
+/// node scripts/verify-vectors.mjs tests/vectors/v1.json
+/// ```
 pub fn export_canonical_test_vector() -> String {
     let secret = [0x07u8; 32];
-    let pub_key_hex = to_hex(&derive_public_key(&secret));
+    let pub_key_hex = to_hex(&ed25519_public_key_bytes(&secret));
     let mut card = SonaraimCard {
         card_id: "card-vector-m7-001".to_string(),
         title: "Milestone 7 Interop Vector".to_string(),
@@ -209,7 +218,8 @@ pub fn export_canonical_test_vector() -> String {
     let _ = sign_card_jcs(&mut card, &secret);
     let canonical_raw = String::from_utf8(canonical_card_bytes(&card)).unwrap_or_default();
     let escaped_canonical = canonical_raw.replace('\\', "\\\\").replace('"', "\\\"");
-    let frame_hex = encode_card(&card).map(|b| to_hex(&b)).unwrap_or_default();
+    let frame_bytes = encode_card(&card).unwrap_or_default();
+    let frame_hex = to_hex(&frame_bytes);
 
     format!(
         "{{\"card_id\":\"{}\",\"canonical_jcs\":\"{}\",\"public_key_hex\":\"{}\",\"signature_hex\":\"{}\",\"wire_frame_hex\":\"{}\"}}",

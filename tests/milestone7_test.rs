@@ -1,10 +1,14 @@
-//! Milestone 7 TDD suite for `sonaraim-protocol` (Issue #5).
+//! Milestone 7 TDD suite for `sonaraim-protocol` (Issue #5), extended by Issue #8.
 //!
 //! Verifies the sliding-window anti-replay guard (`ReplayWindow`) for sealed
-//! envelopes and MLS epochs, and validates deterministic cross-runtime test vectors
-//! (`export_canonical_test_vector`).
+//! envelopes and MLS epochs, validates deterministic cross-runtime test vectors
+//! (`export_canonical_test_vector` plus the versioned `tests/vectors/v1.json`
+//! bundle), and pins the JCS version string verified from Node.js via
+//! `node scripts/verify-vectors.mjs tests/vectors/v1.json` (not executed here).
 
-use sonaraim_protocol::crypto::{derive_public_key, to_hex, verify_card_jcs};
+use sonaraim_protocol::crypto::{
+    card_signing_preimage, ed25519_public_key_bytes, to_hex, verify_card_jcs, SONARAIM_JCS_VERSION,
+};
 use sonaraim_protocol::replay::{ReplayError, ReplayWindow};
 use sonaraim_protocol::wire::{decode_card, export_canonical_test_vector};
 
@@ -112,8 +116,35 @@ fn canonical_test_vector_is_deterministic_and_verifiable() {
     assert!(decoded.is_ok());
     if let Ok(card) = decoded {
         let secret = [0x07u8; 32];
-        let pub_key = derive_public_key(&secret);
+        let pub_key = ed25519_public_key_bytes(&secret);
         assert!(json_a.contains(&to_hex(&pub_key)));
         assert_eq!(verify_card_jcs(&card, &pub_key), Ok(()));
     }
+}
+
+#[test]
+fn versioned_vectors_bundle_pins_jcs_version_and_signing_preimage() {
+    assert_eq!(SONARAIM_JCS_VERSION, "sonaraim-jcs-v1");
+
+    let raw = std::fs::read_to_string("tests/vectors/v1.json").expect("v1.json must exist");
+    assert!(raw.contains("\"format\":\"sonaraim-vectors-v1\""));
+    assert!(raw.contains("\"jcs_version\":\"sonaraim-jcs-v1\""));
+    assert!(raw.contains("\"signature_context\":\"sonaraim-card-ed25519-v1\""));
+    assert!(raw.contains("\"signing_preimage_hex\":\""));
+
+    // The Node.js cross-runtime check reconstructs the exact signed preimage
+    // (version + 0x1f + context + 0x1f + canonical JCS) and verifies Ed25519:
+    // `node scripts/verify-vectors.mjs tests/vectors/v1.json` (manual step,
+    // executed locally during development — not part of `cargo test`).
+    let marker = "\"canonical_jcs\":\"";
+    let start = raw.find(marker).map(|i| i + marker.len()).unwrap_or(0);
+    let end = raw[start..]
+        .find("\",\"signature_context\"")
+        .map(|i| start + i)
+        .unwrap_or(start);
+    let escaped = &raw[start..end];
+    let canonical = escaped.replace("\\\"", "\"").replace("\\\\", "\\");
+    let preimage = card_signing_preimage(canonical.as_bytes());
+    let preimage_hex = to_hex(&preimage);
+    assert!(raw.contains(&preimage_hex));
 }

@@ -81,7 +81,8 @@ htmlcov/
 
 # Language artifacts — Rust, Node/TS, Go, Python
 target/
-Cargo.lock
+# Cargo.lock is COMMITTED in this crate (audited-crypto reproducibility, Issue #8)
+# Cargo.lock
 node_modules/
 dist/
 build/
