@@ -1,7 +1,7 @@
 //! Milestone 7 TDD suite for `sonaraim-protocol` (Issue #5), extended by Issue #8.
 //!
 //! Verifies the sliding-window anti-replay guard (`ReplayWindow`) for sealed
-//! envelopes and MLS epochs, validates deterministic cross-runtime test vectors
+//! envelopes and group-ratchet epochs, validates deterministic cross-runtime
 //! (`export_canonical_test_vector` plus the versioned `tests/vectors/v1.json`
 //! bundle), and pins the JCS version string verified from Node.js via
 //! `node scripts/verify-vectors.mjs tests/vectors/v1.json` (not executed here).
@@ -35,7 +35,7 @@ fn replay_window_rejects_duplicate_envelope_and_stale_epoch() {
         Err(ReplayError::DuplicateEnvelope("env-001".to_string()))
     );
 
-    // Stale MLS epoch (< current min_epoch) must be rejected without recording envelope
+    // Stale group epoch (< current min_epoch) must be rejected without recording envelope
     assert_eq!(
         window.check_and_record("env-002", 0),
         Err(ReplayError::StaleEpoch {

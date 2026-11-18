@@ -93,11 +93,15 @@ impl MlsGroupState {
     }
 
     /// Returns the 32-byte application secret for the current epoch.
-    pub fn current_epoch_key(&self) -> [u8; 32] {
+    ///
+    /// Fails with [`MlsError::UnknownEpoch`] when the current epoch has no
+    /// stored key (purged or never initialized) instead of returning a
+    /// silent all-zero key (protocol#10).
+    pub fn current_epoch_key(&self) -> Result<[u8; 32], MlsError> {
         self.epoch_keys
             .get(&self.epoch)
             .copied()
-            .unwrap_or([0u8; 32])
+            .ok_or(MlsError::UnknownEpoch(self.epoch))
     }
 
     /// Returns the lowercase hexadecimal SHA-256 cumulative transcript digest.
@@ -110,8 +114,8 @@ impl MlsGroupState {
         self.members.contains(member_did)
     }
 
-    fn advance_epoch_with_bytes(&mut self, event_bytes: &[u8]) {
-        let mut prev_key = self.current_epoch_key();
+    fn advance_epoch_with_bytes(&mut self, event_bytes: &[u8]) -> Result<(), MlsError> {
+        let mut prev_key = self.current_epoch_key()?;
         self.epoch += 1;
         let mut context = Vec::with_capacity(self.group_id.len() + 8 + event_bytes.len());
         context.extend_from_slice(self.group_id.as_bytes());
@@ -130,6 +134,7 @@ impl MlsGroupState {
         chain_input.extend_from_slice(&self.epoch.to_be_bytes());
         chain_input.extend_from_slice(event_bytes);
         self.transcript_hash = sha256(&chain_input);
+        Ok(())
     }
 
     /// Adds a member and rotates the group key to a new epoch.
@@ -138,7 +143,7 @@ impl MlsGroupState {
             return Err(MlsError::MemberAlreadyPresent(member_did.to_string()));
         }
         let evt = format!("add:{member_did}");
-        self.advance_epoch_with_bytes(evt.as_bytes());
+        self.advance_epoch_with_bytes(evt.as_bytes())?;
         Ok(self.epoch)
     }
 
@@ -148,7 +153,7 @@ impl MlsGroupState {
             return Err(MlsError::NotAMember(member_did.to_string()));
         }
         let evt = format!("remove:{member_did}");
-        self.advance_epoch_with_bytes(evt.as_bytes());
+        self.advance_epoch_with_bytes(evt.as_bytes())?;
         Ok(self.epoch)
     }
 
@@ -168,7 +173,7 @@ impl MlsGroupState {
         let mut evt = Vec::with_capacity(9 + fresh_entropy.len());
         evt.extend_from_slice(b"recovery:");
         evt.extend_from_slice(fresh_entropy);
-        self.advance_epoch_with_bytes(&evt);
+        self.advance_epoch_with_bytes(&evt)?;
 
         if purge_prior_epochs {
             let current = self.epoch;
@@ -198,7 +203,7 @@ impl MlsGroupState {
             .get(&self.epoch)
             .ok_or(MlsError::UnknownEpoch(self.epoch))?;
         let aad = format!("{}:{}", self.group_id, self.epoch);
-        Ok(aead_seal(key, aad.as_bytes(), plaintext))
+        aead_seal(key, aad.as_bytes(), plaintext).map_err(MlsError::Crypto)
     }
 
     /// Decrypts an application payload only if `requester_did` was a member at `msg_epoch`.

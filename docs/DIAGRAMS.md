@@ -57,7 +57,7 @@ sequenceDiagram
 
     G->>S: create_group(group_id, alice_did)
     S-->>G: Epoch 0 initialized, transcript hash T0
-    G->>S: add_member(bob_did, bob_key_package)
+    G->>S: add_member(bob_did, bob_key_material)
     S->>S: advance_epoch() -> Epoch 1
     S->>S: Ratchet HKDF secret, purge Epoch 0 secrets
     S-->>B: Welcome frame with Epoch 1 state

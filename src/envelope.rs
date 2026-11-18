@@ -136,7 +136,8 @@ pub fn seal_envelope(
     let ephemeral_pub = x25519_public_from_secret(&ephemeral_secret);
     let shared = x25519_agree(&ephemeral_secret, recipient_pub_key);
     let shared_key = derive_envelope_key(&shared, mailbox_id.as_bytes());
-    let mls_ciphertext = aead_seal(&shared_key, mailbox_id.as_bytes(), plaintext);
+    let mls_ciphertext = aead_seal(&shared_key, mailbox_id.as_bytes(), plaintext)
+        .map_err(|_| CryptoError::MalformedInput("invalid envelope bounds"))?;
     let env = SealedEnvelope {
         mailbox_id: mailbox_id.to_string(),
         ephemeral_pub_key: ephemeral_pub.to_vec(),

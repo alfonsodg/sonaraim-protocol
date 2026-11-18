@@ -1,6 +1,6 @@
 # Sonaraim Protocol (`sonaraim-protocol`)
 
-> Zero-metadata Sealed Sender wire contracts, MLS key package models, and declarative Sonaraim Card validators.
+> Zero-metadata Sealed Sender wire contracts, custom group-ratchet key material models, and declarative Sonaraim Card validators.
 
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Crate: Rust 2021](https://img.shields.io/badge/Crate-Rust%202021-DEA584.svg?logo=rust&logoColor=white)](Cargo.toml)
@@ -18,7 +18,7 @@
 - **Declarative Sonaraim Cards (`src/card.rs`)**: Safe, interactive B2B message cards that disallow raw HTML, scripts, and unsafe URI schemes at the protocol boundary.
 - **Declarative Sonaraim Cards (`src/card.rs`, `src/crypto.rs`)**: Safe, interactive B2B message cards that disallow raw HTML, scripts, and unsafe URI schemes at the protocol boundary; Ed25519 signatures over versioned JCS preimages (`sonaraim-jcs-v1`), cross-verified from Node.js WebCrypto (`tests/vectors/v1.json`).
 - **Identity Keyring & Revocation (`src/keyring.rs`)**: Key rotation tracking, expiration checks, and historical signature verification across key lifetimes.
-- **Sonaraim Group Ratchet (`src/mls_group.rs`)**: MLS-inspired group epoch progression with HKDF-SHA256 rotation, forward secrecy via epoch-key zeroization, post-compromise recovery ratchets, and transcript hashing. OpenMLS is explicitly deferred — this module is not RFC 9420.
+- **Sonaraim Group Ratchet (`src/mls_group.rs`)**: Custom MLS-inspired group epoch progression with HKDF-SHA256 rotation, forward secrecy via epoch-key zeroization, post-compromise recovery ratchets, and transcript hashing. OpenMLS is explicitly deferred — this module is not RFC 9420.
 - **Private Set Intersection (`src/psi.rs`)**: Blinded cryptographic token evaluation for private social graph discovery without leaking unhashed contact books.
 - **Anti-Replay Sliding Window (`src/replay.rs`)**: FIFO sliding window for duplicate envelope detection and stale epoch rejection.
 - **Wire Framing & Length Prefixing (`src/wire.rs`)**: Binary length-prefixed framing and stream serialization for high-throughput network transports; deterministic JCS test vectors for cross-runtime verification.
@@ -41,7 +41,7 @@ The following ASCII diagram illustrates the wire serialization, sealing, and val
 |            v                                              v                       |
 |  +--------------------+                         +-------------------+             |
 |  | Group Ratchet    |                         |  Canonical JCS    |             |
-|  | (MLS-inspired)   |                         |  (RFC 8785 Hash)  |             |
+|  | (custom ratchet) |                         |  (hash-pinned)    |             |
 |  |                  |                         |                   |             |
 |  +---------+----------+                         +---------+---------+             |
 |            |                                              |                       |
@@ -94,14 +94,14 @@ sonaraim-protocol/
 │   ├── envelope.rs                       # SealedEnvelope model and validator
 │   ├── keyring.rs                        # Key rotation and revocation management
 │   ├── lib.rs                            # Crate root and public re-exports
-│   ├── mls_group.rs                      # MLS group ratchet state and transcripts
+│   ├── mls_group.rs                      # Group ratchet state and transcripts
 │   ├── psi.rs                            # Private Set Intersection token hashing
 │   ├── replay.rs                         # Anti-replay FIFO sliding window
 │   └── wire.rs                           # Length-prefixed framing codec
 ├── tests/
 │   ├── milestone1_test.rs                # Phase 1 crypto & envelope tests
 │   ├── milestone7_test.rs                # Replay window and test vectors
-│   ├── milestone12_test.rs               # Keyring and MLS recovery tests
+│   ├── milestone12_test.rs               # Keyring and recovery tests
 │   └── protocol_test.rs                  # Core card and envelope validation tests
 ├── Cargo.toml                            # Rust crate manifest (Apache-2.0)
 ├── CODE_OF_CONDUCT.md                    # Contributor Covenant v2.1

@@ -4,9 +4,12 @@
 //! - [`ed25519_dalek`] v3 for Ed25519 card signatures (RFC 8032).
 //! - [`x25519_dalek`] v3 for ephemeral X25519 Diffie-Hellman (RFC 7748).
 //! - [`chacha20poly1305`] for IETF ChaCha20-Poly1305 AEAD (RFC 8439).
-//! - HKDF-SHA256 extract/expand over audited [`sha2`] for epoch and envelope
-//!   key derivation (manual RFC 5869 single-block expand keeps one `digest`
-//!   version across the tree).
+//! - HKDF-SHA256 extract/expand via the audited [`hkdf`] crate (RFC 5869)
+//!   over [`sha2`] for epoch and envelope key derivation. `hkdf` 0.12 and
+//!   `hmac` 0.12 ride the same `digest` 0.10 tree as `sha2` 0.10, so no
+//!   duplicate digest version enters the lockfile (see protocol#8 for the
+//!   earlier hand-roll rationale).
+//! - HMAC-SHA256 via the audited [`hmac`] crate (RFC 4231) for PSI blinding.
 //! - [`rand`] (`OsRng`) for nonces and ephemeral key generation.
 //! - [`zeroize`] for epoch-key erasure on group ratchet progression.
 //!
@@ -30,6 +33,8 @@
 use crate::card::{validate_card, CardValidationError, ComponentType, SonaraimCard};
 use chacha20poly1305::aead::{Aead, AeadInPlace, KeyInit};
 use chacha20poly1305::{AeadCore, ChaCha20Poly1305, Nonce};
+use hkdf::Hkdf;
+use hmac::{Hmac, Mac};
 use rand::rngs::OsRng;
 use sha2::{Digest, Sha256};
 use std::error::Error;
@@ -65,6 +70,10 @@ pub enum CryptoError {
     AuthenticationFailed,
     /// Input key material or ciphertext is malformed or too short.
     MalformedInput(&'static str),
+    /// HKDF key derivation failed (e.g. invalid PRK length or oversized output).
+    KdfError,
+    /// AEAD sealing failed (invalid key, RNG failure, or length overflow).
+    SealFailed,
 }
 
 impl fmt::Display for CryptoError {
@@ -74,6 +83,8 @@ impl fmt::Display for CryptoError {
             Self::InvalidSignature => write!(f, "invalid cryptographic signature"),
             Self::AuthenticationFailed => write!(f, "AEAD authentication failed"),
             Self::MalformedInput(msg) => write!(f, "malformed cryptographic input: {msg}"),
+            Self::KdfError => write!(f, "HKDF key derivation failed"),
+            Self::SealFailed => write!(f, "AEAD sealing failed"),
         }
     }
 }
@@ -89,28 +100,15 @@ pub fn sha256(data: &[u8]) -> [u8; 32] {
 }
 
 /// HMAC-SHA256 over `data` using `key` (used for PSI blinding tokens).
+///
+/// Backed by the audited [`hmac`] crate (RFC 4231). Key preprocessing
+/// (hash-then-pad for oversized keys) follows the crate's RFC-compliant
+/// construction rather than a hand-rolled block loop (protocol#8).
 pub fn hmac_sha256(key: &[u8], data: &[u8]) -> [u8; 32] {
-    const BLOCK: usize = 64;
-    let mut k_block = [0u8; BLOCK];
-    if key.len() > BLOCK {
-        k_block[..32].copy_from_slice(&sha256(key));
-    } else {
-        k_block[..key.len()].copy_from_slice(key);
-    }
-    let mut ipad = [0x36u8; BLOCK];
-    let mut opad = [0x5cu8; BLOCK];
-    for i in 0..BLOCK {
-        ipad[i] ^= k_block[i];
-        opad[i] ^= k_block[i];
-    }
-    let mut inner = Vec::with_capacity(BLOCK + data.len());
-    inner.extend_from_slice(&ipad);
-    inner.extend_from_slice(data);
-    let inner_hash = sha256(&inner);
-    let mut outer = Vec::with_capacity(BLOCK + 32);
-    outer.extend_from_slice(&opad);
-    outer.extend_from_slice(&inner_hash);
-    sha256(&outer)
+    let mut mac =
+        <Hmac<Sha256> as Mac>::new_from_slice(key).expect("HMAC accepts keys of any length");
+    mac.update(data);
+    mac.finalize().into_bytes().into()
 }
 
 /// Returns the Ed25519 verification key bytes for a 32-byte signing seed.
@@ -183,8 +181,8 @@ pub fn x25519_public_from_secret(secret: &[u8; 32]) -> [u8; 32] {
 
 /// Derives a 32-byte envelope AEAD key from an X25519 shared secret via HKDF-SHA256.
 ///
-/// Uses a manual HKDF-Extract/Expand over audited [`sha2`] so the digest crate
-/// version stays unified with `ed25519-dalek` (sha2 0.11).
+/// Uses the audited [`hkdf`] crate (RFC 5869): extract with
+/// `ENVELOPE_KDF_CONTEXT` as salt, then single-block expand over `mailbox_id`.
 pub fn derive_envelope_key(shared_secret: &[u8; 32], mailbox_id: &[u8]) -> [u8; 32] {
     hkdf_expand(shared_secret, ENVELOPE_KDF_CONTEXT.as_bytes(), mailbox_id)
 }
@@ -195,14 +193,16 @@ pub fn derive_epoch_key(prev_key: &[u8; 32], context: &[u8]) -> [u8; 32] {
 }
 
 /// Minimal HKDF-SHA256 (RFC 5869) expand step producing 32 bytes of key material.
+///
+/// Single-block derivation via the audited [`hkdf`] crate: extract with `salt`
+/// as the HMAC salt, then `expand(info, okm)`. Panics only if the crate
+/// rejects the fixed 32-byte output length, which cannot happen for SHA-256.
 fn hkdf_expand(ikm: &[u8; 32], salt: &[u8], info: &[u8]) -> [u8; 32] {
-    // Extract: PRK = HMAC-SHA256(salt, IKM).
-    let prk = hmac_sha256(salt, ikm);
-    // Expand (single 32-byte block): T(1) = HMAC-SHA256(PRK, info || 0x01).
-    let mut expand_input = Vec::with_capacity(info.len() + 1);
-    expand_input.extend_from_slice(info);
-    expand_input.push(0x01);
-    hmac_sha256(&prk, &expand_input)
+    let hk = Hkdf::<Sha256>::new(Some(salt), ikm);
+    let mut okm = [0u8; 32];
+    hk.expand(info, &mut okm)
+        .expect("32-byte HKDF-SHA256 expand must succeed");
+    okm
 }
 
 /// Produces deterministic canonical JCS-ordered bytes for signing a [`SonaraimCard`].
@@ -309,27 +309,23 @@ pub fn fresh_nonce() -> [u8; 12] {
 /// Encrypts and authenticates plaintext with ChaCha20-Poly1305 (RFC 8439).
 ///
 /// Output layout is `nonce (12 bytes) || ciphertext || tag (16 bytes)`.
-pub fn aead_seal(key: &[u8; 32], aad: &[u8], plaintext: &[u8]) -> Vec<u8> {
+/// Sealing failures (RNG failure or length overflow) are returned as
+/// [`CryptoError::SealFailed`]; there is no nonce-zero fallback — callers
+/// must propagate the error rather than emit unauthenticated bytes
+/// (protocol#10).
+pub fn aead_seal(key: &[u8; 32], aad: &[u8], plaintext: &[u8]) -> Result<Vec<u8>, CryptoError> {
     use chacha20poly1305::Key;
     let cipher = ChaCha20Poly1305::new(Key::from_slice(key));
     let nonce = ChaCha20Poly1305::generate_nonce(OsRng);
     let mut buffer = plaintext.to_vec();
-    let tag = match cipher.encrypt_in_place_detached(&nonce, aad, &mut buffer) {
-        Ok(tag) => tag,
-        // ChaCha20-Poly1305 sealing only fails on RNG or length overflow;
-        // fall back to a deterministic zero nonce so the function stays total.
-        Err(_) => {
-            let zero_nonce = Nonce::from([0u8; 12]);
-            cipher
-                .encrypt_in_place_detached(&zero_nonce, aad, &mut buffer)
-                .unwrap_or_else(|_| chacha20poly1305::Tag::from([0u8; 16]))
-        }
-    };
+    let tag = cipher
+        .encrypt_in_place_detached(&nonce, aad, &mut buffer)
+        .map_err(|_| CryptoError::SealFailed)?;
     let mut out = Vec::with_capacity(12 + buffer.len() + AEAD_TAG_LEN);
     out.extend_from_slice(nonce.as_slice());
     out.append(&mut buffer);
     out.extend_from_slice(tag.as_slice());
-    out
+    Ok(out)
 }
 
 /// Authenticates and decrypts an AEAD ciphertext produced by [`aead_seal`].

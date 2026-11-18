@@ -1,7 +1,7 @@
-//! Sliding-window anti-replay guard for Sealed Sender envelopes and MLS epochs.
+//! Sliding-window anti-replay guard for Sealed Sender envelopes and group-ratchet epochs.
 //!
 //! Protects relay nodes, B2B gateways, and clients from duplicate envelope
-//! re-submission and stale MLS group epoch downgrades with bounded memory usage.
+//! re-submission and stale group epoch downgrades with bounded memory usage.
 
 use std::collections::{HashSet, VecDeque};
 use std::error::Error;
@@ -11,10 +11,11 @@ use std::fmt;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ReplayError {
     /// The provided envelope identifier is empty or whitespace-only.
+    /// The provided envelope identifier is empty or whitespace-only.
     EmptyEnvelopeId,
     /// The envelope identifier has already been observed within the active window.
     DuplicateEnvelope(String),
-    /// The message MLS epoch is older than the highest observed epoch.
+    /// The message group-ratchet epoch is older than the highest observed epoch.
     StaleEpoch {
         /// Epoch number attached to the rejected message.
         provided: u64,
@@ -33,7 +34,7 @@ impl fmt::Display for ReplayError {
                 min_required,
             } => write!(
                 f,
-                "stale MLS epoch {provided} rejected (minimum required epoch: {min_required})"
+                "stale group epoch {provided} rejected (minimum required epoch: {min_required})"
             ),
         }
     }
@@ -41,7 +42,7 @@ impl fmt::Display for ReplayError {
 
 impl Error for ReplayError {}
 
-/// Bounded FIFO sliding window tracking observed envelope IDs and monotonic MLS epochs.
+/// Bounded FIFO sliding window tracking observed envelope IDs and monotonic group epochs.
 #[derive(Debug, Clone)]
 pub struct ReplayWindow {
     capacity: usize,
@@ -77,7 +78,7 @@ impl ReplayWindow {
         self.order.is_empty()
     }
 
-    /// Returns the minimum acceptable MLS epoch observed so far.
+    /// Returns the minimum acceptable group epoch observed so far.
     pub fn min_epoch(&self) -> u64 {
         self.min_epoch
     }

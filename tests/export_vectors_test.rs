@@ -94,7 +94,7 @@ fn export_versioned_vectors() {
     let aead_key = [0x5au8; 32];
     let aead_aad = b"sonaraim-vectors-v1";
     let aead_plaintext = b"vector-aead-self-check";
-    let sealed = aead_seal(&aead_key, aead_aad, aead_plaintext);
+    let sealed = aead_seal(&aead_key, aead_aad, aead_plaintext).expect("seal must succeed");
     assert_eq!(
         aead_open(&aead_key, aead_aad, &sealed),
         Ok(aead_plaintext.to_vec())
@@ -107,6 +107,7 @@ fn export_versioned_vectors() {
         "x25519-dalek",
         "chacha20poly1305",
         "hkdf",
+        "hmac",
         "sha2",
         "rand",
         "zeroize",

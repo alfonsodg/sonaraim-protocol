@@ -73,7 +73,8 @@ pub struct MerchantSignature {
     pub signature_hex: String,
 }
 
-/// Declarative B2B rich card transmitted inside an end-to-end encrypted MLS frame.
+/// Declarative B2B rich card transmitted inside an end-to-end encrypted
+/// group-ratchet frame.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SonaraimCard {
     /// Unique identifier for the card instance.
