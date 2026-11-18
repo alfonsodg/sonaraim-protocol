@@ -5,7 +5,13 @@
 ## Language & Toolchain
 
 - **Language**: Rust (latest stable, `edition = "2021"`).
-- **Dependencies**: Zero runtime third-party crates in the core validator to ensure deterministic builds, minimal supply-chain surface, and instant execution.
+- **Dependencies**: Audited cryptographic crates only — `ed25519-dalek`,
+  `x25519-dalek` (with `static_secrets`), `chacha20poly1305`, `sha2`, `rand`
+  (+ `rand_core`, `getrandom`/`OsRng`), `subtle`, `zeroize`. Home-made SHA-256,
+  HMAC, AEAD, and signature constructions are forbidden; OpenMLS stays
+  **deferred** and the group module is honestly named "Sonaraim Group Ratchet".
+  `Cargo.lock` is committed to the repo for reproducible audits (exception to
+  the default Rust `.gitignore`).
 - **File Size Limit**: Every source and test file must remain strictly under 300 lines with a single clear responsibility.
 
 ## Code Quality & Documentation
@@ -20,8 +26,8 @@
 ## Security Invariants
 
 1. **Zero XSS Surface**: `SonaraimCard` validation must reject raw HTML tags (`<script`, `<iframe`, `<object`, `onerror=`, `onload=`), unsafe component types, and non-HTTPS/non-deep-link action URIs (`javascript:`, `data:`, `vbscript:`).
-2. **Cryptographic Attribution**: Every `SonaraimCard` must carry a `MerchantSignature` with a valid `did:web:` or `did:sonaraim:` identifier, `Ed25519` algorithm tag, and 64-byte (128 hex characters) signature payload.
-3. **Blinded Routing Bounds**: Every `SealedEnvelope` must supply a 32-byte X25519 ephemeral public key, a valid mailbox identifier, non-empty MLS ciphertext within size bounds, and a bounded TTL.
+2. **Cryptographic Attribution**: Every `SonaraimCard` must carry a `MerchantSignature` with a valid `did:web:` or `did:sonaraim:` identifier, `Ed25519` algorithm tag, and 64-byte (128 hex characters) real Ed25519 signature over the domain-separated JCS preimage (`sonaraim-jcs-v1` + `sonaraim-card-ed25519-v1` + canonical JCS), verifiable with `ed25519-dalek` and cross-checked from Node.js WebCrypto via `tests/vectors/v1.json`.
+3. **Blinded Routing Bounds**: Every `SealedEnvelope` must supply a 32-byte X25519 ephemeral public key, a valid mailbox identifier, non-empty group-ratchet ciphertext within size bounds, and a bounded TTL. Sealing uses a fresh ephemeral-static X25519 DH with HKDF-SHA256 key derivation and ChaCha20-Poly1305 AEAD; never reuse nonces or home-made ciphers.
 
 ## Git & Issue Workflow
 

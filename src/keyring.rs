@@ -6,7 +6,7 @@
 
 use crate::card::SonaraimCard;
 use crate::crypto::{
-    constant_time_eq, derive_public_key, sign_card_jcs, verify_card_jcs, CryptoError,
+    constant_time_eq, ed25519_public_key_bytes, sign_card_jcs, verify_card_jcs, CryptoError,
 };
 use std::collections::HashMap;
 use std::error::Error;
@@ -185,7 +185,7 @@ impl KeyRing {
         ) {
             return Err(KeyRingError::Crypto(CryptoError::InvalidSignature));
         }
-        let pub_key = derive_public_key(&entry.key_bytes);
+        let pub_key = ed25519_public_key_bytes(&entry.key_bytes);
         verify_card_jcs(card, &pub_key).map_err(KeyRingError::Crypto)
     }
 }

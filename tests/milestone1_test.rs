@@ -4,7 +4,10 @@
 //! - Issue #4: MLS group epoch ratcheting & PSI blinded contact discovery
 
 use sonaraim_protocol::card::{CardComponent, ComponentType, MerchantSignature, SonaraimCard};
-use sonaraim_protocol::crypto::{derive_public_key, sign_card_jcs, verify_card_jcs, CryptoError};
+use sonaraim_protocol::crypto::{
+    ed25519_public_key_bytes, sign_card_jcs, verify_card_jcs, x25519_public_from_secret,
+    CryptoError,
+};
 use sonaraim_protocol::envelope::{open_envelope, seal_envelope};
 use sonaraim_protocol::mls_group::MlsGroupState;
 use sonaraim_protocol::psi::{blind_contact_identifier, evaluate_blinded_set, match_psi_results};
@@ -42,7 +45,7 @@ fn sample_unsigned_card() -> SonaraimCard {
 #[test]
 fn signs_and_verifies_card_with_jcs_and_rejects_tampering() {
     let secret = [0x42u8; 32];
-    let public = derive_public_key(&secret);
+    let public = ed25519_public_key_bytes(&secret);
     let mut card = sample_unsigned_card();
 
     sign_card_jcs(&mut card, &secret).expect("signing must succeed");
@@ -58,7 +61,7 @@ fn signs_and_verifies_card_with_jcs_and_rejects_tampering() {
 #[test]
 fn seals_and_opens_envelope_with_aead_authentication() {
     let mailbox_secret = [0x19u8; 32];
-    let mailbox_pub = derive_public_key(&mailbox_secret);
+    let mailbox_pub = x25519_public_from_secret(&mailbox_secret);
     let plaintext = b"{\"msg\":\"hello mls\"}";
 
     let envelope = seal_envelope("mbx_user_0001", &mailbox_pub, plaintext, 3600)
@@ -84,7 +87,7 @@ fn encodes_and_decodes_wire_frames_and_rejects_truncated_input() {
     let decoded_card = decode_card(&card_bytes).expect("card decoding must succeed");
     assert_eq!(decoded_card, card);
 
-    let mailbox_pub = derive_public_key(&[0x55u8; 32]);
+    let mailbox_pub = x25519_public_from_secret(&[0x55u8; 32]);
     let env = seal_envelope(
         "mbx_wire_0001",
         &mailbox_pub,
@@ -136,13 +139,19 @@ fn discovers_shared_contacts_via_psi_without_exposing_non_matches() {
     let server_secret = [0x7Au8; 32];
     let registered_phones = vec!["+51999888777", "+14155550101"];
     let client_phones = vec!["+51999888777", "+51911222333"];
+    let client_salt = b"salt-1";
     let client_blinds: Vec<Vec<u8>> = client_phones
         .iter()
-        .map(|p| blind_contact_identifier(p, b"salt-1"))
+        .map(|p| blind_contact_identifier(p, client_salt))
         .collect();
 
-    let server_eval = evaluate_blinded_set(&client_blinds, &registered_phones, &server_secret);
-    let matches = match_psi_results(&client_phones, &server_eval, b"salt-1", &server_secret);
+    let server_eval = evaluate_blinded_set(
+        &client_blinds,
+        &registered_phones,
+        &server_secret,
+        client_salt,
+    );
+    let matches = match_psi_results(&client_phones, client_salt, &server_eval);
 
     assert_eq!(matches, vec!["+51999888777".to_string()]);
 }

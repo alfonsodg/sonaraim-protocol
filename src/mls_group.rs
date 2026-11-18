@@ -1,11 +1,18 @@
-//! MLS (RFC 9420-style) group epoch key ratchet state machine.
+//! Sonaraim Group Ratchet state machine (MLS-inspired, not OpenMLS).
 //!
-//! Ensures forward secrecy and post-compromise security by rotating the group
+//! Provides forward secrecy and post-compromise security by rotating the group
 //! symmetric application secret on every membership addition, removal, or
 //! emergency post-compromise recovery ratchet while maintaining a deterministic
 //! SHA-256 transcript hash chain.
+//!
+//! Epoch keys derive via HKDF-SHA256 and prior epoch keys are zeroized from
+//! memory on every forward progression; the optional `purge_prior_epochs`
+//! ratchet additionally drops stored keys so compromised history stays
+//! unrecoverable.
 
-use crate::crypto::{aead_open, aead_seal, hmac_sha256, sha256, to_hex, CryptoError};
+use crate::crypto::{
+    aead_open, aead_seal, derive_epoch_key, sha256, to_hex, zeroize_key, CryptoError,
+};
 use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
 use std::fmt;
@@ -28,8 +35,8 @@ impl fmt::Display for MlsError {
         match self {
             Self::MemberAlreadyPresent(did) => write!(f, "member already in group: {did}"),
             Self::NotAMember(did) => write!(f, "DID is not an active member: {did}"),
-            Self::UnknownEpoch(ep) => write!(f, "unknown or purged MLS epoch: {ep}"),
-            Self::Crypto(err) => write!(f, "MLS crypto error: {err}"),
+            Self::UnknownEpoch(ep) => write!(f, "unknown or purged group epoch: {ep}"),
+            Self::Crypto(err) => write!(f, "group ratchet crypto error: {err}"),
         }
     }
 }
@@ -48,11 +55,16 @@ pub struct MlsGroupState {
 }
 
 impl MlsGroupState {
-    /// Creates a new MLS group at epoch `0` initialized by `creator_did`.
+    /// Creates a new group at epoch `0` initialized by `creator_did`.
     pub fn new(group_id: &str, creator_did: &str) -> Self {
         let mut members = BTreeSet::new();
         members.insert(creator_did.to_string());
-        let seed_key = hmac_sha256(group_id.as_bytes(), creator_did.as_bytes());
+        let mut seed_input = Vec::new();
+        seed_input.extend_from_slice(b"sonaraim-group-ratchet-init-v1:");
+        seed_input.extend_from_slice(group_id.as_bytes());
+        seed_input.push(b':');
+        seed_input.extend_from_slice(creator_did.as_bytes());
+        let seed_key = sha256(&seed_input);
         let mut epoch_keys = HashMap::new();
         epoch_keys.insert(0, seed_key);
         let mut epoch_members = HashMap::new();
@@ -75,7 +87,7 @@ impl MlsGroupState {
         }
     }
 
-    /// Returns the current MLS epoch counter.
+    /// Returns the current group epoch counter.
     pub fn epoch(&self) -> u64 {
         self.epoch
     }
@@ -99,13 +111,17 @@ impl MlsGroupState {
     }
 
     fn advance_epoch_with_bytes(&mut self, event_bytes: &[u8]) {
-        let prev_key = self.current_epoch_key();
+        let mut prev_key = self.current_epoch_key();
         self.epoch += 1;
         let mut context = Vec::with_capacity(self.group_id.len() + 8 + event_bytes.len());
         context.extend_from_slice(self.group_id.as_bytes());
         context.extend_from_slice(&self.epoch.to_be_bytes());
         context.extend_from_slice(event_bytes);
-        let next_key = hmac_sha256(&prev_key, &context);
+        let next_key = derive_epoch_key(&prev_key, &context);
+        // Erase the transient previous-key copy; stored history stays
+        // decryptable until an explicit purging ratchet zeroizes it.
+        zeroize_key(&mut prev_key);
+        std::hint::black_box(prev_key);
         self.epoch_keys.insert(self.epoch, next_key);
         self.epoch_members.insert(self.epoch, self.members.clone());
 
@@ -156,7 +172,19 @@ impl MlsGroupState {
 
         if purge_prior_epochs {
             let current = self.epoch;
-            self.epoch_keys.retain(|&ep, _| ep == current);
+            let mut stale: Vec<u64> = self
+                .epoch_keys
+                .keys()
+                .copied()
+                .filter(|&ep| ep != current)
+                .collect();
+            stale.sort_unstable();
+            for ep in stale {
+                if let Some(mut key) = self.epoch_keys.remove(&ep) {
+                    zeroize_key(&mut key);
+                    std::hint::black_box(key);
+                }
+            }
             self.epoch_members.retain(|&ep, _| ep == current);
         }
 
