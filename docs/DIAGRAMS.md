@@ -16,12 +16,12 @@ sequenceDiagram
 
     M->>P: validate_card(SonaraimCard)
     P-->>M: Ok(()) (DID + Ed25519 + Safe Components)
-    M->>M: Encrypt card inside MLS Group Frame
+    M->>M: Encrypt card inside Group Ratchet Frame
     M->>P: validate_envelope(SealedEnvelope)
     P-->>M: Ok(()) (32B X25519 + Mailbox + TTL)
     M->>R: Dispatch SealedEnvelope(mailbox_id)
     R->>C: Deliver SealedEnvelope to anonymous mailbox
-    C->>C: Unseal outer HPKE layer + Decrypt MLS ciphertext
+    C->>C: ECDH unseal outer layer + Decrypt group ciphertext
     C->>P: validate_card(SonaraimCard)
     P-->>C: Ok(()) -> Render Native UI Components
 ```
@@ -45,14 +45,14 @@ stateDiagram-v2
 
 ---
 
-## 3. MLS Group Epoch Ratcheting Sequence
+## 3. Group Ratchet Epoch Sequence (MLS-inspired, not OpenMLS)
 
 ```mermaid
 sequenceDiagram
     autonumber
     participant G as Group Creator (Alice)
     participant B as Bob (Invitee)
-    participant S as MlsGroupSession State
+    participant S as MlsGroupState (Group Ratchet)
     participant R as ReplayWindow
 
     G->>S: create_group(group_id, alice_did)
@@ -74,7 +74,7 @@ sequenceDiagram
 ```mermaid
 stateDiagram-v2
     [*] --> Draft: Sender generates payload
-    Draft --> Sealed: HPKE seal with recipient ephemeral X25519
+    Draft --> Sealed: ECDH seal with recipient ephemeral X25519
     Sealed --> InTransit: Dispatched to relay mailbox_id
     InTransit --> Queued: Offline recipient (TTL active)
     InTransit --> Delivered: Recipient connects & fetches
@@ -96,10 +96,9 @@ sequenceDiagram
     participant Node as sonaraim-node (PSI Engine)
 
     App->>App: Normalize contacts to E.164
-    App->>App: Blind phone numbers with random secret r
+    App->>App: Blind phone numbers with per-session client salt
     App->>Node: POST /v1/contacts/psi (blinded_tokens)
-    Node->>Node: Evaluate blinded tokens against registered phone index
-    Node-->>App: Matching blind evaluation receipts
-    App->>App: Unblind receipts with r^-1
-    App->>App: Intersect with local contact list -> Discovered DIDs
+    Node->>Node: Evaluate blinded tokens + directory commitments
+    Node-->>App: Keyed tokens (honest DH-blinded match, no OPRF)
+    App->>App: Local intersect, server_secret never leaves server
 ```
