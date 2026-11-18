@@ -1,7 +1,7 @@
 //! TDD integration tests for Milestone 1 & 5 protocol primitives:
 //! - Issue #2: Ed25519 JCS card signing/verification & Sealed Sender AEAD
 //! - Issue #3: Deterministic binary wire codec for envelopes and cards
-//! - Issue #4: MLS group epoch ratcheting & PSI blinded contact discovery
+//! - Issue #4: custom group-ratchet epoch rotation & PSI blinded contact discovery
 
 use sonaraim_protocol::card::{CardComponent, ComponentType, MerchantSignature, SonaraimCard};
 use sonaraim_protocol::crypto::{
@@ -108,10 +108,10 @@ fn encodes_and_decodes_wire_frames_and_rejects_truncated_input() {
 #[test]
 fn rotates_mls_group_epoch_keys_and_excludes_removed_members() {
     let mut group = MlsGroupState::new("grp-alpha-1", "did:sonaraim:alice");
-    let epoch0_key = group.current_epoch_key();
+    let epoch0_key = group.current_epoch_key().expect("epoch 0 key");
 
     group.add_member("did:sonaraim:bob").expect("add bob");
-    let epoch1_key = group.current_epoch_key();
+    let epoch1_key = group.current_epoch_key().expect("epoch 1 key");
     assert_ne!(epoch0_key, epoch1_key);
     assert_eq!(group.epoch(), 1);
     assert!(group.is_member("did:sonaraim:bob"));

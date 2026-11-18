@@ -6,8 +6,9 @@
 
 - **Language**: Rust (latest stable, `edition = "2021"`).
 - **Dependencies**: Audited cryptographic crates only — `ed25519-dalek`,
-  `x25519-dalek` (with `static_secrets`), `chacha20poly1305`, `sha2`, `rand`
-  (+ `rand_core`, `getrandom`/`OsRng`), `subtle`, `zeroize`. Home-made SHA-256,
+  `x25519-dalek` (with `static_secrets`), `chacha20poly1305`, `hmac`, `hkdf`,
+  `sha2`, `rand` (+ `rand_core`, `getrandom`/`OsRng`), `subtle`, `zeroize`.
+  `sha2`, `rand` (+ `rand_core`, `getrandom`/`OsRng`), `subtle`, `zeroize`. Home-made SHA-256,
   HMAC, AEAD, and signature constructions are forbidden; OpenMLS stays
   **deferred** and the group module is honestly named "Sonaraim Group Ratchet".
   `Cargo.lock` is committed to the repo for reproducible audits (exception to

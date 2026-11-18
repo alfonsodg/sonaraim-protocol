@@ -9,23 +9,28 @@ option java_package = "com.sonaraim.protocol.v1";
 message SealedEnvelope {
   // Anonymous rotating mailbox identifier for the recipient.
   string mailbox_id = 1;
-  // 32-byte X25519 ephemeral public key for outer HPKE unsealing.
+  // 32-byte X25519 ephemeral public key for the outer ECDH unsealing
+  // (ephemeral-static X25519 with HKDF-SHA256; not HPKE).
   bytes ephemeral_pub_key = 2;
-  // Encrypted RFC 9420 Messaging Layer Security (MLS) frame.
+  // Encrypted Sonaraim group-ratchet frame (ChaCha20-Poly1305 AEAD
+  // ciphertext; this protocol does not implement RFC 9420).
   bytes mls_ciphertext = 3;
   // Time-to-live in seconds at the relay node (60..=604800).
   uint32 ttl_seconds = 4;
 }
 
-// Pre-published MLS KeyPackage used for asynchronous group/session establishment.
+// Pre-published group-ratchet key material for asynchronous session
+// establishment (custom format for the Sonaraim group ratchet; not an
+// RFC 9420 KeyPackage).
 message MlsKeyPackage {
   // Unique identifier of the key package bundle.
   string key_package_id = 1;
-  // Ciphersuite identifier (e.g., 0x0001 for MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519).
+  // Local key-agreement suite selector for the custom group ratchet
+  // (opaque integer; not an MLS ciphersuite identifier).
   uint32 ciphersuite_id = 2;
-  // Serialized RFC 9420 KeyPackage bytes.
+  // Serialized custom group-ratchet key material bytes (not RFC 9420).
   bytes key_package_bytes = 3;
-  // Credential proof linking the MLS leaf key to a Decentralized Identifier.
+  // Credential proof binding the group-ratchet leaf key to a Decentralized Identifier.
   DidProof credential_proof = 4;
   // Unix timestamp (seconds) when this key package expires.
   uint64 expires_at_unix = 5;

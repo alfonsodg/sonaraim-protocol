@@ -32,7 +32,7 @@ Relay nodes route messages exclusively by `mailbox_id` without learning the send
 
 - **`mailbox_id`**: Rotating opaque token (8 to 128 ASCII alphanumeric/hyphen/underscore characters) derived for the recipient's delivery mailbox.
 - **`ephemeral_pub_key`**: Exactly 32 bytes representing a fresh random one-time X25519 public key; sealing runs ephemeral-static Diffie-Hellman against the recipient key with HKDF-SHA256 derivation (ECDH, not HPKE).
-- **`mls_ciphertext`**: Non-empty encrypted Sonaraim Group Ratchet payload (ChaCha20-Poly1305 AEAD, `nonce || ciphertext || tag`) capped at 256 KiB (`262144` bytes).
+- **`mls_ciphertext`**: Non-empty encrypted Sonaraim Group Ratchet payload (ChaCha20-Poly1305 AEAD, `nonce || ciphertext || tag`) capped at 256 KiB (`262144` bytes). The field name is historical; the bytes are a custom group-ratchet frame, not an RFC 9420 message.
 - **`ttl_seconds`**: Ephemeral storage TTL between 60 seconds (1 minute) and 604800 seconds (7 days).
 
 ---
@@ -49,9 +49,9 @@ B2B merchants send rich interactive messages inside E2EE sessions using declarat
 
 ## 4. Canonical Hashing & Cryptography (`src/crypto.rs`)
 
-Audited crates only (`ed25519-dalek`, `x25519-dalek`, `chacha20poly1305`, `sha2`, `rand`/`OsRng`, `zeroize`); home-made hashes, MACs, and ciphers are forbidden:
+Audited crates only (`ed25519-dalek`, `x25519-dalek`, `chacha20poly1305`, `hmac`, `hkdf`, `sha2`, `rand`/`OsRng`, `zeroize`); home-made hashes, MACs, and ciphers are forbidden:
 
-- **JCS Canonicalization (RFC 8785)**: JSON objects are serialized into deterministic UTF-8 byte streams with sorted keys and whitespace normalization; the signed preimage is versioned (`sonaraim-jcs-v1` + `0x1f` + `sonaraim-card-ed25519-v1` + `0x1f` + canonical JCS) and pinned in `tests/vectors/v1.json`.
+- **Canonical JSON serialization (versioned preimage)**: card fields are serialized into deterministic UTF-8 byte streams with fixed key order; the signed preimage is versioned (`sonaraim-jcs-v1` + `0x1f` + `sonaraim-card-ed25519-v1` + `0x1f` + canonical bytes) and pinned in `tests/vectors/v1.json`. This is a protocol-internal deterministic encoding, not a claim of full RFC 8785 JCS conformance.
 - **AEAD Sealing**: Envelope sealing uses ChaCha20-Poly1305 (IETF, RFC 8438/8439 layout `nonce || ciphertext || 16-byte tag`) with 12-byte fresh random nonces per seal.
 - **Digital Signatures**: All cryptographic identity proofs use real Ed25519 (`ed25519-dalek`, RFC 8032) verified against RFC test vectors; X25519 agreement (`x25519-dalek`, RFC 7748) derives AEAD keys via HKDF-SHA256.
 

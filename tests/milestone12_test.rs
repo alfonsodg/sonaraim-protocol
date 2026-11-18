@@ -1,7 +1,7 @@
 //! Milestone 12 TDD test suite for `sonaraim-protocol` (Issues #6 and #7).
 //!
 //! Verifies `KeyRing` key rotation, key-expiration enforcement, and revoked-key
-//! rejection (#6), as well as MLS post-compromise emergency ratchet and
+//! rejection (#6), as well as group-ratchet post-compromise emergency ratchet and
 //! deterministic SHA-256 transcript digest (#7).
 
 use sonaraim_protocol::card::{CardComponent, ComponentType, MerchantSignature, SonaraimCard};
@@ -153,7 +153,7 @@ fn mls_force_recovery_ratchet_purges_compromised_epochs_and_tracks_transcript() 
 
     let msg_epoch_1 = group_a
         .encrypt_application_msg(b"confidential-before-compromise")
-        .unwrap_or_default();
+        .expect("encrypt epoch 1");
 
     // Non-purging recovery ratchet advances to epoch 2 while keeping epoch 1 accessible
     let entropy_1 = b"fresh-csprng-entropy-block-01";
@@ -175,7 +175,10 @@ fn mls_force_recovery_ratchet_purges_compromised_epochs_and_tracks_transcript() 
         group_a.transcript_digest_hex(),
         group_b.transcript_digest_hex()
     );
-    assert_eq!(group_a.current_epoch_key(), group_b.current_epoch_key());
+    assert_eq!(
+        group_a.current_epoch_key().expect("epoch 3 key"),
+        group_b.current_epoch_key().expect("epoch 3 key")
+    );
 
     // Purged epoch 1 must now return UnknownEpoch(1)
     assert_eq!(
@@ -186,7 +189,7 @@ fn mls_force_recovery_ratchet_purges_compromised_epochs_and_tracks_transcript() 
     // Current epoch 3 encrypts and decrypts cleanly
     let msg_epoch_3 = group_a
         .encrypt_application_msg(b"post-recovery-payload")
-        .unwrap_or_default();
+        .expect("encrypt epoch 3");
     assert_eq!(
         group_b.decrypt_application_msg(&msg_epoch_3, 3, "did:sonaraim:bob"),
         Ok(b"post-recovery-payload".to_vec())

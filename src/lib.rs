@@ -6,7 +6,8 @@
 //! - [`card`]: Declarative B2B rich cards with `did:web:` / `did:sonaraim:`
 //!   `Ed25519` merchant signatures and strict anti-XSS component checks.
 //! - [`envelope`]: Blinded Sealed Sender envelopes with 32-byte X25519
-//!   ephemeral public keys, MLS ciphertext bounds, and TTL validation.
+//!   ephemeral public keys, custom group-ratchet ciphertext bounds, and TTL
+//!   validation.
 
 #![forbid(unsafe_code)]
 #![deny(missing_docs)]

@@ -4,7 +4,7 @@
 //! querying `sonaraim-node`, preventing the directory from observing unhashed
 //! address books.
 //!
-//! ## Protocol (honest DH-blinded match)
+//! ## Protocol (HMAC-based blinded match, audited `hmac` crate)
 //!
 //! 1. Client computes `blind = HMAC_SHA256(client_salt, normalized_phone)`.
 //! 2. Server evaluates `token = HMAC_SHA256(server_secret, blind)` per blind
