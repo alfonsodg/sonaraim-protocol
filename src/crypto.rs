@@ -30,7 +30,8 @@
 //! reference checks, and audited-crate version pins. It exits non-zero on any
 //! mismatch.
 
-use crate::card::{validate_card, CardValidationError, ComponentType, SonaraimCard};
+use crate::card::CardValidationError;
+pub use crate::jcs::{canonical_card_bytes, sign_card_jcs, verify_card_jcs};
 use chacha20poly1305::aead::{Aead, AeadInPlace, KeyInit};
 use chacha20poly1305::{AeadCore, ChaCha20Poly1305, Nonce};
 use hkdf::Hkdf;
@@ -205,62 +206,15 @@ fn hkdf_expand(ikm: &[u8; 32], salt: &[u8], info: &[u8]) -> [u8; 32] {
     okm
 }
 
-/// Produces deterministic canonical JCS-ordered bytes for signing a [`SonaraimCard`].
-pub fn canonical_card_bytes(card: &SonaraimCard) -> Vec<u8> {
-    let mut out = String::new();
-    out.push_str("{\"card_id\":\"");
-    out.push_str(&card.card_id);
-    out.push_str("\",\"components\":[");
-    for (idx, comp) in card.components.iter().enumerate() {
-        if idx > 0 {
-            out.push(',');
-        }
-        let kind = match &comp.component_type {
-            ComponentType::TextBlock => "text_block",
-            ComponentType::MediaImage => "media_image",
-            ComponentType::KeyValueRow => "key_value_row",
-            ComponentType::ActionButton => "action_button",
-            ComponentType::Unsupported(raw) => raw.as_str(),
-        };
-        out.push_str("{\"action_uri\":\"");
-        out.push_str(comp.action_uri.as_deref().unwrap_or(""));
-        out.push_str("\",\"label\":\"");
-        out.push_str(&comp.label);
-        out.push_str("\",\"type\":\"");
-        out.push_str(kind);
-        out.push_str("\",\"value\":\"");
-        out.push_str(comp.value.as_deref().unwrap_or(""));
-        out.push_str("\"}");
-    }
-    out.push_str("],\"did\":\"");
-    out.push_str(&card.merchant_signature.did);
-    out.push_str("\",\"summary\":\"");
-    out.push_str(&card.summary);
-    out.push_str("\",\"title\":\"");
-    out.push_str(&card.title);
-    out.push_str("\"}");
-    out.into_bytes()
-}
-
-/// Builds the domain-separated preimage signed for a card payload.
-///
-/// Layout: `SONARAIM_JCS_VERSION (0x1f) CARD_SIGNATURE_CONTEXT (0x1f) canonical_jcs`.
-/// Cross-runtime verifiers must reconstruct this exact byte string before
-/// Ed25519 verification (see `scripts/verify-vectors.mjs`).
+/// Deprecated alias of [`jcs::card_signing_preimage`](crate::jcs::card_signing_preimage)
+/// with the crate's `SONARAIM_JCS_VERSION`/`CARD_SIGNATURE_CONTEXT` bound in.
+/// Kept for existing call-sites and downstream consumers.
 pub fn card_signing_preimage(canonical: &[u8]) -> Vec<u8> {
-    let mut msg = Vec::with_capacity(
-        SONARAIM_JCS_VERSION.len() + 1 + CARD_SIGNATURE_CONTEXT.len() + 1 + canonical.len(),
-    );
-    msg.extend_from_slice(SONARAIM_JCS_VERSION.as_bytes());
-    msg.push(0x1f);
-    msg.extend_from_slice(CARD_SIGNATURE_CONTEXT.as_bytes());
-    msg.push(0x1f);
-    msg.extend_from_slice(canonical);
-    msg
+    crate::jcs::card_signing_preimage(canonical, SONARAIM_JCS_VERSION, CARD_SIGNATURE_CONTEXT)
 }
 
 /// Decodes 128-char hex into a 64-byte Ed25519 signature.
-fn decode_signature_hex(hex: &str) -> Result<[u8; 64], CryptoError> {
+pub fn decode_signature_hex(hex: &str) -> Result<[u8; 64], CryptoError> {
     if hex.len() != 128 || !hex.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(CryptoError::InvalidSignature);
     }
@@ -278,27 +232,6 @@ fn decode_signature_hex(hex: &str) -> Result<[u8; 64], CryptoError> {
         idx += 2;
     }
     Ok(out)
-}
-
-/// Signs a [`SonaraimCard`] using its canonical JCS representation and a 32-byte Ed25519 seed.
-pub fn sign_card_jcs(card: &mut SonaraimCard, secret: &[u8; 32]) -> Result<(), CryptoError> {
-    let signing = ed25519_dalek::SigningKey::from_bytes(secret);
-    let canonical = canonical_card_bytes(card);
-    let message = card_signing_preimage(&canonical);
-    use ed25519_dalek::Signer;
-    let signature = signing.sign(&message);
-    card.merchant_signature.algorithm = "Ed25519".to_string();
-    card.merchant_signature.signature_hex = to_hex(&signature.to_bytes());
-    validate_card(card).map_err(CryptoError::InvalidCard)
-}
-
-/// Verifies a [`SonaraimCard`] signature against the merchant's 32-byte Ed25519 public key.
-pub fn verify_card_jcs(card: &SonaraimCard, public_key: &[u8; 32]) -> Result<(), CryptoError> {
-    validate_card(card).map_err(CryptoError::InvalidCard)?;
-    let signature = decode_signature_hex(&card.merchant_signature.signature_hex)?;
-    let canonical = canonical_card_bytes(card);
-    let message = card_signing_preimage(&canonical);
-    ed25519_verify_bytes(public_key, &message, &signature)
 }
 
 /// Generates a fresh random 12-byte ChaCha20-Poly1305 nonce via `OsRng`.
