@@ -19,9 +19,10 @@
 - **Declarative Sonaraim Cards (`src/card.rs`, `src/crypto.rs`)**: Safe, interactive B2B message cards that disallow raw HTML, scripts, and unsafe URI schemes at the protocol boundary; Ed25519 signatures over versioned JCS preimages (`sonaraim-jcs-v1`), cross-verified from Node.js WebCrypto (`tests/vectors/v1.json`).
 - **Identity Keyring & Revocation (`src/keyring.rs`)**: Key rotation tracking, expiration checks, and historical signature verification across key lifetimes.
 - **Sonaraim Group Ratchet (`src/mls_group.rs`)**: Custom MLS-inspired group epoch progression with HKDF-SHA256 rotation, forward secrecy via epoch-key zeroization, post-compromise recovery ratchets, and transcript hashing. OpenMLS is explicitly deferred — this module is not RFC 9420.
-- **Private Set Intersection (`src/psi.rs`)**: Blinded cryptographic token evaluation for private social graph discovery without leaking unhashed contact books.
+- **Private Set Intersection (`src/psi.rs`, `src/oprf.rs`)**: HMAC-blinded match for migration plus a verifiable 2HashDH OPRF (ristretto255 + Chaum-Pedersen DLEQ proof + HKDF-SHA256 token) that detects malicious-server token substitution.
 - **Anti-Replay Sliding Window (`src/replay.rs`)**: FIFO sliding window for duplicate envelope detection and stale epoch rejection.
 - **Wire Framing & Length Prefixing (`src/wire.rs`)**: Binary length-prefixed framing and stream serialization for high-throughput network transports; deterministic JCS test vectors for cross-runtime verification.
+- **WASM/TS Bindings (`src/wasm*.rs`, `ts/`)**: Optional `wasm` feature exposing `encode/decode_envelope`, `encode/decode_card`, `canonical_card_bytes`, `verify_card`, and `export_canonical_test_vector` to JS/TS (`wasm-pack build --target web --features wasm`); native builds stay dependency-free of `wasm-bindgen`.
 
 ---
 
