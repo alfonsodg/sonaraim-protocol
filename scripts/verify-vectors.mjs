@@ -76,10 +76,32 @@ for (const card of bundle.cards) {
   check(`card ${card.card_id} signature verifies`, ok === true && card.algorithm === "Ed25519");
 }
 
-// 3. Freshness guard: vectors must declare the audited Rust crates the
+// 3. OPRF vector shape: the verifiable-OPRF directory vector must carry its
+// domain-separation tags, a 32-byte server public key, and a 32-byte match
+// token (Node checks the deterministic HKDF binding in step 5; the
+// ristretto255 blind/evaluate/unblind round-trip is covered by `cargo test`).
+{
+  const v = bundle.oprf_voprf;
+  check("oprf vector present", typeof v === "object" && v !== null);
+  check("oprf hash DST pinned", v?.hash_dst === "sonaraim-oprf-v1-h1");
+  check("oprf token info pinned", v?.token_info === "sonaraim-oprf-v1-token");
+  check("oprf proof DST pinned", v?.proof_dst === "sonaraim-oprf-v1-dleq");
+  check(
+    "oprf server public key is 32 bytes",
+    typeof v?.server_public_key_hex === "string" &&
+      hexToBytes(v.server_public_key_hex).length === 32,
+  );
+  check(
+    "oprf match token is 32 bytes",
+    typeof v?.match_token_hex === "string" &&
+      hexToBytes(v.match_token_hex).length === 32,
+  );
+}
+
+// 4. Freshness guard: vectors must declare the audited Rust crates the
 // Ed25519 checks mirror. (HMAC/HKDF/X25519/ChaCha20-Poly1305 vectors are
 // covered by `cargo test`, not by this script.)
-for (const dep of ["ed25519-dalek", "x25519-dalek", "chacha20poly1305", "hkdf", "hmac"]) {
+for (const dep of ["ed25519-dalek", "x25519-dalek", "chacha20poly1305", "hkdf", "hmac", "curve25519-dalek"]) {
   check(
     `audited dependency declared (${dep})`,
     typeof bundle.audited_crates?.[dep] === "string",

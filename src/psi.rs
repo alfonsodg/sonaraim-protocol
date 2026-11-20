@@ -16,8 +16,10 @@
 //!    `server_secret`, so server key material never leaves the server.
 //!
 //! This is *not* a verifiable OPRF: a malicious server could substitute tokens.
-//! Deployments needing malicious-server security must replace this module with
-//! a proper OPRF (e.g. `opaque-ke` / RFC draft) via a dedicated follow-up issue.
+//! New deployments must use the verifiable 2HashDH OPRF in [`crate::oprf`]
+//! (ristretto255 + Chaum-Pedersen DLEQ proof + HKDF-SHA256 match token),
+//! which detects substituted evaluations client-side without exposing the
+//! server key. This HMAC path stays only for migration.
 
 use crate::crypto::hmac_sha256;
 

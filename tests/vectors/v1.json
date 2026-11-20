@@ -21,5 +21,13 @@
     "public_key_hex":"ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c",
     "signature_hex":"4a081a4ee2204ae77d66eb9d5a84b0d18cb219ca57ff47f810dc2c1f0cb70391df636d084696d482042b465762a741bfbc83682a7a8d7548995a9c15a1ecfb00"
   }],
-  "audited_crates":{"ed25519-dalek":"3.0.0","x25519-dalek":"3.0.0","chacha20poly1305":"0.10.1","hkdf":"0.12.4","hmac":"0.12.1","sha2":"0.10.9","rand":"0.8.8","zeroize":"1.9.2"}
+  "oprf_voprf":{
+    "hash_dst":"sonaraim-oprf-v1-h1",
+    "token_info":"sonaraim-oprf-v1-token",
+    "proof_dst":"sonaraim-oprf-v1-dleq",
+    "input":"+51998888777",
+    "server_public_key_hex":"c052a4f35e3cd34a7ae3fe09f9063e97102ea22b2349a5ba74223096421ad114",
+    "match_token_hex":"52f6965d361629434e4195e861ff8148a7f10702fda51d7faf33860dea8dbf32"
+  },
+  "audited_crates":{"ed25519-dalek":"3.0.0","x25519-dalek":"3.0.0","chacha20poly1305":"0.10.1","curve25519-dalek":"5.0.0","hkdf":"0.12.4","hmac":"0.12.1","sha2":"0.10.9","rand":"0.8.8","zeroize":"1.9.2"}
 }
