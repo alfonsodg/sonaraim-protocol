@@ -22,6 +22,7 @@ pub mod envelope;
 pub mod jcs;
 pub mod keyring;
 pub mod mls_group;
+pub mod oprf;
 pub mod psi;
 pub mod replay;
 pub mod wire;

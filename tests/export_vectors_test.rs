@@ -11,6 +11,9 @@ use sonaraim_protocol::crypto::{
     ed25519_sign_bytes, to_hex, x25519_agree, x25519_public_from_secret, CARD_SIGNATURE_CONTEXT,
     SONARAIM_JCS_VERSION,
 };
+use sonaraim_protocol::oprf::{
+    oprf_client_finalize, oprf_server_public_key, OPRF_HASH_DST, OPRF_PROOF_DST, OPRF_TOKEN_INFO,
+};
 use std::fs;
 use std::path::PathBuf;
 
@@ -100,12 +103,21 @@ fn export_versioned_vectors() {
         Ok(aead_plaintext.to_vec())
     );
 
+    // Deterministic OPRF vector: fixed server key and phone input yield a
+    // stable server public key and match token via `oprf_client_finalize`
+    // (fresh blinds cancel out of the unblinded element `k * H1(input)`).
+    let oprf_server_secret = [0x6bu8; 32];
+    let oprf_vector_input = "+51998888777";
+    let oprf_vector_public = oprf_server_public_key(&oprf_server_secret);
+    let oprf_vector_token = oprf_client_finalize(oprf_vector_input.as_bytes(), &oprf_server_secret);
+
     let lock = fs::read_to_string("Cargo.lock").expect("Cargo.lock must be committed");
     let mut audited: Vec<(&str, String)> = Vec::new();
     for name in [
         "ed25519-dalek",
         "x25519-dalek",
         "chacha20poly1305",
+        "curve25519-dalek",
         "hkdf",
         "hmac",
         "sha2",
@@ -151,6 +163,14 @@ fn export_versioned_vectors() {
             "    \"public_key_hex\":\"{}\",\n",
             "    \"signature_hex\":\"{}\"\n",
             "  }}],\n",
+            "  \"oprf_voprf\":{{\n",
+            "    \"hash_dst\":\"{}\",\n",
+            "    \"token_info\":\"{}\",\n",
+            "    \"proof_dst\":\"{}\",\n",
+            "    \"input\":\"{}\",\n",
+            "    \"server_public_key_hex\":\"{}\",\n",
+            "    \"match_token_hex\":\"{}\"\n",
+            "  }},\n",
             "  \"audited_crates\":{{{}}}\n",
             "}}\n"
         ),
@@ -167,6 +187,12 @@ fn export_versioned_vectors() {
         to_hex(&card_signing_preimage(canonical.as_bytes())),
         to_hex(&public_key),
         card.merchant_signature.signature_hex,
+        OPRF_HASH_DST,
+        OPRF_TOKEN_INFO,
+        OPRF_PROOF_DST,
+        oprf_vector_input,
+        to_hex(&oprf_vector_public),
+        to_hex(&oprf_vector_token),
         audited_json,
     );
 
