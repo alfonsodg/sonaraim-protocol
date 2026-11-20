@@ -9,6 +9,14 @@
 //! memory on every forward progression; the optional `purge_prior_epochs`
 //! ratchet additionally drops stored keys so compromised history stays
 //! unrecoverable.
+//!
+//! OpenMLS (RFC 9420) adoption was evaluated in issue #15 (2026-11-20) and
+//! deferred with evidence: the provider line pins `ed25519-dalek` v2 /
+//! `curve25519-dalek` v4 / `x25519-dalek` v2 against this crate's audited
+//! v3/v5/v3 set, pulls ~96 transitive crates, and cannot sit behind this
+//! synchronous API without breaking stability. Re-evaluation is tracked in
+//! issue #16 once a compatible provider exists. The decision lock lives in
+//! `tests/openmls_decision_test.rs`.
 
 use crate::crypto::{
     aead_open, aead_seal, derive_epoch_key, sha256, to_hex, zeroize_key, CryptoError,

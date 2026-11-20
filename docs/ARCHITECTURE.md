@@ -82,6 +82,7 @@ The `Keyring` subsystem tracks active and historical cryptographic keys for veri
 - **Forward Secrecy**: The superseded transient epoch key copy is zeroized on every rotation, and `force_recovery_ratchet(..., purge_prior_epochs = true)` zeroizes and drops all prior stored epoch keys so compromised history stays unrecoverable.
 - **Post-Compromise Security (PCS)**: Members trigger emergency `force_recovery_ratchet` updates with fresh entropy that refresh the ratchet and heal past compromises.
 - **Transcript Hashing**: Every epoch generates a deterministic SHA-256 transcript hash tying member actions and state transitions together.
+- **OpenMLS decision (#15, 2026-11-20)**: Adoption evaluated via a read-only spike and deferred with evidence — the provider line pins `ed25519-dalek` v2 / `curve25519-dalek` v4 / `x25519-dalek` v2 against this crate's audited v3/v5/v3 set, pulls ~96 transitive crates, and cannot sit behind the synchronous `MlsGroupState` API without breaking stability. Re-evaluation is tracked in #16.
 
 ---
 

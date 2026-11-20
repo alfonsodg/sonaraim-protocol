@@ -11,7 +11,8 @@
   `hmac`, `hkdf`, `sha2`, `rand` (+ `rand_core`, `getrandom`/`OsRng`),
   `subtle`, `zeroize`, plus `wasm-bindgen` on the opt-in `wasm` target only.
   Home-made SHA-256, HMAC, AEAD, and signature constructions are forbidden;
-  OpenMLS stays **deferred** and the group module is honestly named
+  OpenMLS stays **deferred** (adoption evaluated with evidence in issue #15;
+  re-evaluation tracked in issue #16) and the group module is honestly named
   "Sonaraim Group Ratchet".
   `sha2`, `rand` (+ `rand_core`, `getrandom`/`OsRng`), `subtle`, `zeroize`. Home-made SHA-256,
   HMAC, AEAD, and signature constructions are forbidden; OpenMLS stays
