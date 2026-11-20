@@ -25,6 +25,11 @@ pub mod mls_group;
 pub mod oprf;
 pub mod psi;
 pub mod replay;
+pub mod wasm;
+pub mod wasm_bridge;
+pub mod wasm_json;
+pub mod wasm_model;
+pub mod wasm_parse;
 pub mod wire;
 
 pub use card::{
