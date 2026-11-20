@@ -12,12 +12,9 @@
 //! agreement remains deferred per `docs/STANDARDS.md`.
 
 use crate::crypto::GROUP_RATCHET_KDF_INFO;
+use crate::crypto_provider::{default_provider, CryptoProvider};
 use curve25519_dalek::ristretto::{CompressedRistretto, RistrettoPoint};
 use curve25519_dalek::scalar::Scalar;
-use hkdf::Hkdf;
-use rand::rngs::OsRng;
-use rand::RngCore as _;
-use sha2::{Digest, Sha512};
 use std::error::Error;
 use std::fmt;
 
@@ -77,17 +74,14 @@ fn hash_to_point(input: &[u8]) -> RistrettoPoint {
     RistrettoPoint::from_uniform_bytes(&sha512_64(&tagged))
 }
 
-/// Computes a SHA-512 digest with the audited [`sha2`] crate.
+/// Computes a SHA-512 digest via the provider.
 fn sha512_64(data: &[u8]) -> [u8; 64] {
-    let digest = Sha512::digest(data);
-    let mut out = [0u8; 64];
-    out.copy_from_slice(&digest);
-    out
+    default_provider().sha512_64(data)
 }
 
 /// Derives a 32-byte match token via HKDF-SHA256 over the unblinded element.
 ///
-/// Uses the audited [`hkdf`] crate: extract with the group-ratchet label as
+/// Uses the provider seam: extract with the group-ratchet label as
 /// salt, then expand over `OPRF_TOKEN_INFO || 0x1f || element || 0x1f ||
 /// input`, binding the token to the transcript element and the identifier.
 fn hkdf_token(unblinded_element: &[u8; 32], input: &[u8]) -> [u8; 32] {
@@ -97,21 +91,17 @@ fn hkdf_token(unblinded_element: &[u8; 32], input: &[u8]) -> [u8; 32] {
     info.extend_from_slice(unblinded_element);
     info.push(0x1f);
     info.extend_from_slice(input);
-    let hk = Hkdf::<sha2::Sha256>::new(Some(GROUP_RATCHET_KDF_INFO.as_bytes()), unblinded_element);
-    let mut out = [0u8; 32];
-    hk.expand(&info, &mut out)
-        .expect("32-byte HKDF-SHA256 expand must succeed");
-    out
+    default_provider().hkdf_sha256_32(unblinded_element, GROUP_RATCHET_KDF_INFO.as_bytes(), &info)
 }
 
-/// Draws a fresh nonzero scalar from `OsRng`.
+/// Draws a fresh nonzero scalar from the provider CSPRNG.
 ///
 /// Uses `from_bytes_mod_order_wide` over 64 random bytes instead of
 /// `Scalar::random`, which needs curve25519-dalek's `rand_core` feature
 /// (extra dependency surface this crate deliberately avoids).
 fn random_scalar() -> Scalar {
     let mut bytes = [0u8; 64];
-    OsRng.fill_bytes(&mut bytes);
+    default_provider().fill_random(&mut bytes);
     let scalar = Scalar::from_bytes_mod_order_wide(&bytes);
     if scalar == Scalar::ZERO {
         Scalar::from(1u8)

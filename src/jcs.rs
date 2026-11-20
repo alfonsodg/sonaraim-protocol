@@ -12,6 +12,7 @@ use crate::card::{validate_card, ComponentType, SonaraimCard};
 use crate::crypto::{
     ed25519_verify_bytes, to_hex, CryptoError, CARD_SIGNATURE_CONTEXT, SONARAIM_JCS_VERSION,
 };
+use crate::crypto_provider::{default_provider, CryptoProvider};
 
 /// Escapes a string per RFC 8785 §3.2.2.3: `"` and `\` take short escapes,
 /// C0 controls take short escapes where defined (`\b \f \n \r \t`) and
@@ -96,13 +97,16 @@ pub fn card_signing_preimage(
 
 /// Signs a [`SonaraimCard`] using its canonical JCS representation and a 32-byte Ed25519 seed.
 pub fn sign_card_jcs(card: &mut SonaraimCard, secret: &[u8; 32]) -> Result<(), CryptoError> {
-    let signing = ed25519_dalek::SigningKey::from_bytes(secret);
-    let canonical = canonical_card_bytes(card);
-    let message = card_signing_preimage(&canonical, SONARAIM_JCS_VERSION, CARD_SIGNATURE_CONTEXT);
-    use ed25519_dalek::Signer;
-    let signature = signing.sign(&message);
+    let signature = default_provider().ed25519_sign_bytes(
+        secret,
+        &card_signing_preimage(
+            &canonical_card_bytes(card),
+            SONARAIM_JCS_VERSION,
+            CARD_SIGNATURE_CONTEXT,
+        ),
+    );
     card.merchant_signature.algorithm = "Ed25519".to_string();
-    card.merchant_signature.signature_hex = to_hex(&signature.to_bytes());
+    card.merchant_signature.signature_hex = to_hex(&signature);
     validate_card(card).map_err(CryptoError::InvalidCard)
 }
 

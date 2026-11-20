@@ -47,13 +47,14 @@ B2B merchants send rich interactive messages inside E2EE sessions using declarat
 
 ---
 
-## 4. Canonical Hashing & Cryptography (`src/crypto.rs`)
+## 4. Canonical Hashing & Cryptography (`src/crypto.rs`, `src/crypto_provider.rs`)
 
 Audited crates only (`ed25519-dalek`, `x25519-dalek`, `chacha20poly1305`, `curve25519-dalek` for the verifiable OPRF, `hmac`, `hkdf`, `sha2`, `rand`/`OsRng`, `zeroize`); home-made hashes, MACs, and ciphers are forbidden:
 
 - **Canonical JSON serialization (versioned preimage)**: card fields are serialized into deterministic UTF-8 byte streams with fixed key order; the signed preimage is versioned (`sonaraim-jcs-v1` + `0x1f` + `sonaraim-card-ed25519-v1` + `0x1f` + canonical bytes) and pinned in `tests/vectors/v1.json`. This is a protocol-internal deterministic encoding, not a claim of full RFC 8785 JCS conformance.
 - **AEAD Sealing**: Envelope sealing uses ChaCha20-Poly1305 (IETF, RFC 8438/8439 layout `nonce || ciphertext || 16-byte tag`) with 12-byte fresh random nonces per seal.
 - **Digital Signatures**: All cryptographic identity proofs use real Ed25519 (`ed25519-dalek`, RFC 8032) verified against RFC test vectors; X25519 agreement (`x25519-dalek`, RFC 7748) derives AEAD keys via HKDF-SHA256.
+- **Provider seam (issue #17)**: No consumer (`mls_group`, `oprf`, `psi`, `envelope`, `jcs`) touches an audited crate directly. Every primitive flows through the internal `CryptoProvider` trait (`src/crypto_provider.rs`); `src/crypto.rs` is a thin façade delegating to `default_provider()` (the current audited-crate set as the single backend). Swapping the provider implementation is now the single integration point for a future OpenMLS backend — #16 stays the tracking issue.
 
 ---
 

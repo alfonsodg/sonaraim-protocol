@@ -18,6 +18,7 @@
 
 pub mod card;
 pub mod crypto;
+pub mod crypto_provider;
 pub mod envelope;
 pub mod jcs;
 pub mod keyring;
